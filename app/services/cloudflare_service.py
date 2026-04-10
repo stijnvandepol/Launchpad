@@ -62,7 +62,7 @@ def _restart_cloudflared() -> None:
     """Restart the cloudflared container to pick up config changes."""
     try:
         result = subprocess.run(
-            ["docker", "ps", "-q", "--filter", "name=cloudflared"],
+            ["docker", "ps", "-q", "--filter", "name=tunnel-projects"],
             capture_output=True, text=True, timeout=10,
         )
         container_id = result.stdout.strip()

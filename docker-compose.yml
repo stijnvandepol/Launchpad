@@ -9,8 +9,15 @@ services:
       - demos:/demos
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/cloudflared:/cloudflared
+    depends_on:
+      - tunnel-launchpad
 
-  cloudflared:
+  tunnel-launchpad:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+
+  tunnel-projects:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     network_mode: host
