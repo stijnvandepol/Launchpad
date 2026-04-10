@@ -157,3 +157,17 @@ def test_list_projects_includes_status(store_dir):
     for project in data:
         assert "status" in project
         assert project["status"] in ("running", "stopped")
+
+
+def test_list_projects_docker_unavailable(store_dir):
+    from app.services.docker_service import DockerError
+    client = TestClient(_app(store_dir))
+    client.post("/projects", json={
+        "name": "my-app", "repo_url": "https://github.com/x/y",
+        "subdomain": "my-app", "port": 3001,
+    })
+    with patch("app.routers.projects.container_status", side_effect=DockerError("daemon down")):
+        resp = client.get("/projects")
+    assert resp.status_code == 200
+    for project in resp.json():
+        assert project["status"] == "stopped"

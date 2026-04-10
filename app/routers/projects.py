@@ -22,10 +22,14 @@ def list_projects(
     _: JWTClaims = Depends(require_user),
 ):
     projects = load_projects(_store_path(settings))
-    return [
-        ProjectResponse(**p.model_dump(), status=container_status(p.subdomain))
-        for p in projects
-    ]
+    result = []
+    for p in projects:
+        try:
+            status = container_status(p.subdomain)
+        except DockerError:
+            status = "stopped"
+        result.append(ProjectResponse(**p.model_dump(), status=status))
+    return result
 
 
 @router.post("", response_model=Project, status_code=status.HTTP_201_CREATED)
