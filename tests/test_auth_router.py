@@ -1,5 +1,4 @@
 # tests/test_auth_router.py
-import pytest
 import respx
 import httpx
 from fastapi import FastAPI
@@ -26,9 +25,8 @@ def _app():
     return app
 
 
-@pytest.mark.asyncio
-async def test_login_returns_token():
-    async with respx.mock:
+def test_login_returns_token():
+    with respx.mock:
         respx.post(f"{ACCURO_URL}/api/v1/auth/login").mock(
             return_value=httpx.Response(200, json={"access_token": "accuro-tok"})
         )
@@ -45,9 +43,8 @@ async def test_login_returns_token():
     assert r.json()["token_type"] == "bearer"
 
 
-@pytest.mark.asyncio
-async def test_login_wrong_password_returns_401():
-    async with respx.mock:
+def test_login_wrong_password_returns_401():
+    with respx.mock:
         respx.post(f"{ACCURO_URL}/api/v1/auth/login").mock(
             return_value=httpx.Response(401, json={"detail": "Invalid credentials"})
         )
@@ -56,9 +53,8 @@ async def test_login_wrong_password_returns_401():
     assert r.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_login_disallowed_role_returns_403():
-    async with respx.mock:
+def test_login_disallowed_role_returns_403():
+    with respx.mock:
         respx.post(f"{ACCURO_URL}/api/v1/auth/login").mock(
             return_value=httpx.Response(200, json={"access_token": "tok"})
         )
@@ -73,12 +69,27 @@ async def test_login_disallowed_role_returns_403():
     assert r.status_code == 403
 
 
-@pytest.mark.asyncio
-async def test_login_accuro_unreachable_returns_401():
-    async with respx.mock:
+def test_login_accuro_unreachable_returns_401():
+    with respx.mock:
         respx.post(f"{ACCURO_URL}/api/v1/auth/login").mock(
             side_effect=httpx.ConnectError("refused")
         )
         client = TestClient(_app(), raise_server_exceptions=False)
         r = client.post("/auth/login", json={"email": "a@b.com", "password": "pass"})
     assert r.status_code == 401
+
+
+def test_login_inactive_user_returns_403():
+    with respx.mock:
+        respx.post(f"{ACCURO_URL}/api/v1/auth/login").mock(
+            return_value=httpx.Response(200, json={"access_token": "tok"})
+        )
+        respx.get(f"{ACCURO_URL}/api/v1/auth/verify").mock(
+            return_value=httpx.Response(200, json={
+                "id": "u3", "email": "inactive@test.com",
+                "name": "Inactive", "role": "admin", "is_active": False,
+            })
+        )
+        client = TestClient(_app(), raise_server_exceptions=False)
+        r = client.post("/auth/login", json={"email": "inactive@test.com", "password": "pass"})
+    assert r.status_code == 403

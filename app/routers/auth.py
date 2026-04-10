@@ -23,11 +23,18 @@ async def login(body: LoginRequest, settings: Settings = Depends(get_settings)):
     try:
         accuro_token = await login_via_accuro(body.email, body.password, settings.ACCURO_URL)
         user = await verify_accuro_token(accuro_token, settings.ACCURO_URL)
-    except AccuroAuthError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    except AccuroAuthError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     if user.role not in settings.allowed_roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Role not permitted")
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
 
     token = sign_token(
         {"sub": user.id, "email": user.email, "name": user.name, "role": user.role},
