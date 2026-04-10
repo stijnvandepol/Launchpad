@@ -171,3 +171,62 @@ def test_list_projects_docker_unavailable(store_dir):
     assert resp.status_code == 200
     for project in resp.json():
         assert project["status"] == "stopped"
+
+
+def test_update_project_success(store_dir, tmp_path):
+    from unittest.mock import patch, MagicMock
+    project_id = "test-update-id"
+    client = TestClient(_app(store_dir))
+    # First create a project
+    pid = client.post("/projects", json={
+        "name": "demo", "repo_url": "https://github.com/x/y",
+        "subdomain": "demo", "port": 3000,
+    }).json()["id"]
+
+    with patch("app.routers.projects.get_project") as mock_get, \
+         patch("app.routers.projects.subprocess") as mock_sub, \
+         patch("app.routers.projects.stop_container"), \
+         patch("app.routers.projects.deploy_container", return_value="abc123"), \
+         patch("app.routers.projects.upsert_project"), \
+         patch("app.routers.projects.container_status", return_value="running"):
+        from app.models import Project
+        mock_get.return_value = Project(
+            id=pid, name="demo", repo_url="https://github.com/x/y",
+            subdomain="demo", path=str(tmp_path), port=3000
+        )
+        mock_sub.run.return_value = MagicMock(returncode=0, stderr="")
+        resp = client.post(f"/projects/{pid}/update")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "running"
+    assert data["updated_at"] is not None
+
+
+def test_update_project_not_found(store_dir):
+    client = TestClient(_app(store_dir), raise_server_exceptions=False)
+    with patch("app.routers.projects.get_project", return_value=None):
+        resp = client.post("/projects/nonexistent/update")
+    assert resp.status_code == 404
+
+
+def test_update_project_git_fail(store_dir, tmp_path):
+    from unittest.mock import patch, MagicMock
+    project_id = "fail-id"
+    client = TestClient(_app(store_dir), raise_server_exceptions=False)
+    # First create a project
+    pid = client.post("/projects", json={
+        "name": "demo", "repo_url": "https://github.com/x/y",
+        "subdomain": "demo", "port": 3000,
+    }).json()["id"]
+
+    with patch("app.routers.projects.get_project") as mock_get, \
+         patch("app.routers.projects.subprocess") as mock_sub:
+        from app.models import Project
+        mock_get.return_value = Project(
+            id=pid, name="demo", repo_url="https://github.com/x/y",
+            subdomain="demo", path=str(tmp_path), port=3000
+        )
+        mock_sub.run.return_value = MagicMock(returncode=1, stderr="fatal: not a git repo")
+        resp = client.post(f"/projects/{pid}/update")
+    assert resp.status_code == 502
+    assert "git pull" in resp.json()["detail"]

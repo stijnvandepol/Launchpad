@@ -1,5 +1,6 @@
 # app/routers/projects.py
 import uuid
+import subprocess
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.config import get_settings, Settings
@@ -106,3 +107,54 @@ def stop_project(
     project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return project
+
+
+@router.post("/{project_id}/update", response_model=ProjectResponse)
+def update_project(
+    project_id: str,
+    settings: Settings = Depends(get_settings),
+    _: JWTClaims = Depends(require_user),
+):
+    store = _store_path(settings)
+    project = get_project(store, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    # git pull
+    result = subprocess.run(
+        ["git", "pull"],
+        cwd=project.path,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"git pull failed: {result.stderr}",
+        )
+
+    # docker build
+    result = subprocess.run(
+        ["docker", "build", "-t", project.subdomain, "."],
+        cwd=project.path,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"docker build failed: {result.stderr}",
+        )
+
+    # stop oude container en herstart
+    try:
+        stop_container(project.subdomain)
+        deploy_container(project.subdomain, project.path, project.port)
+    except DockerError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+    project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
+    upsert_project(store, project)
+    return ProjectResponse(**project.model_dump(), status="running")
