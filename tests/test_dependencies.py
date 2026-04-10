@@ -44,3 +44,13 @@ def test_invalid_token_returns_401():
     client = TestClient(_make_app(), raise_server_exceptions=False)
     r = client.get("/me", headers={"Authorization": "Bearer badtoken"})
     assert r.status_code == 401
+
+
+def test_token_missing_claims_returns_401():
+    from jose import jwt as jose_jwt
+    # Valid signature, but missing required JWTClaims fields
+    bad_payload = {"sub": "u1", "iat": 1000000, "exp": 9999999999}
+    token = jose_jwt.encode(bad_payload, SECRET, algorithm="HS256")
+    client = TestClient(_make_app(), raise_server_exceptions=False)
+    r = client.get("/me", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 401
