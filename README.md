@@ -36,7 +36,7 @@ This starts Launchpad and cloudflared together. Launchpad gets access to the Doc
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+uvicorn app.main:app --host 0.0.0.0 --port 3000
 ```
 
 ### Environment variables
@@ -50,7 +50,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 | `BASE_DOMAIN` | Domain for subdomains (e.g. `webvakwerk.nl`) | `webvakwerk.nl` |
 | `BASE_DIR` | Root directory where projects are stored | `/demos` |
 | `CLOUDFLARED_CONFIG` | Path to cloudflared `config.yml` | `/cloudflared/config.yml` |
-| `PORT` | Port Launchpad listens on | `8080` |
+| `PORT` | Port Launchpad listens on | `3000` |
 
 ## API
 

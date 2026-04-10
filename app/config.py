@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     CLOUDFLARED_CONFIG: str = "/cloudflared/config.yml"
     TUNNEL_UUID: str
     BASE_DOMAIN: str = "webvakwerk.nl"
-    PORT: int = 8080
+    PORT: int = 3000
 
     @field_validator("LAUNCHPAD_JWT_SECRET")
     @classmethod
