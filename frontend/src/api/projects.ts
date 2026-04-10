@@ -16,7 +16,6 @@ export interface CreateProjectPayload {
   name: string
   repo_url: string
   subdomain: string
-  port: number
 }
 
 export const projectsApi = {

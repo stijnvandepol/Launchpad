@@ -10,8 +10,12 @@ class DockerError(Exception):
     pass
 
 
-def _run(cmd: list[str], cwd: str | None = None, timeout: int = 300) -> subprocess.CompletedProcess:
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+def _run(
+    cmd: list[str], cwd: str | None = None, timeout: int = 300, env: dict | None = None,
+) -> subprocess.CompletedProcess:
+    import os
+    run_env = {**os.environ, **(env or {})}
+    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=run_env)
     if result.returncode != 0:
         logger.error("Command %s failed: %s", cmd, result.stderr)
         raise DockerError(f"{' '.join(cmd)} failed: {result.stderr}")
@@ -30,9 +34,10 @@ def pull_repo(path: str) -> None:
     _run(["git", "pull"], cwd=path, timeout=120)
 
 
-def deploy_project(path: str) -> None:
-    """Run docker compose up -d --build in the project directory."""
-    _run(["docker", "compose", "up", "-d", "--build"], cwd=path)
+def deploy_project(path: str, port: int | None = None) -> None:
+    """Run docker compose up -d --build, passing PORT as env var."""
+    env = {"PORT": str(port)} if port else None
+    _run(["docker", "compose", "up", "-d", "--build"], cwd=path, env=env)
 
 
 def stop_project(path: str) -> None:

@@ -22,29 +22,31 @@ def _check_url(v: str) -> str:
     return v
 
 
-class _ProjectBase(BaseModel):
+class Project(BaseModel):
+    id: str
     name: str
     repo_url: str
     subdomain: str
+    path: str
     port: int = Field(ge=1, le=65535)
+    deployed_at: datetime | None = None
+    updated_at: datetime | None = None
 
     _validate_slug = field_validator("subdomain")(_check_slug)
     _validate_url = field_validator("repo_url")(_check_url)
-
-
-class Project(_ProjectBase):
-    id: str
-    path: str
-    deployed_at: datetime | None = None
-    updated_at: datetime | None = None
 
 
 class ProjectResponse(Project):
     status: Literal["running", "stopped"] = "stopped"
 
 
-class DeployRequest(_ProjectBase):
-    pass
+class DeployRequest(BaseModel):
+    name: str
+    repo_url: str
+    subdomain: str
+
+    _validate_slug = field_validator("subdomain")(_check_slug)
+    _validate_url = field_validator("repo_url")(_check_url)
 
 
 class AccuroUser(BaseModel):

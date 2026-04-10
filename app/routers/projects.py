@@ -20,11 +20,23 @@ def _store_path(settings: Settings) -> str:
     return f"{settings.BASE_DIR}/projects.json"
 
 
+_PORT_START = 8001
+
+
 def _get_or_404(store: str, project_id: str) -> Project:
     project = get_project(store, project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
+
+
+def _next_port(store: str) -> int:
+    """Find the lowest available port starting from _PORT_START."""
+    used = {p.port for p in load_projects(store)}
+    port = _PORT_START
+    while port in used:
+        port += 1
+    return port
 
 
 # --- LIST / CREATE / DELETE ---
@@ -52,15 +64,16 @@ def create_project(
     settings: Settings = Depends(get_settings),
     _: JWTClaims = Depends(require_user),
 ):
+    store = _store_path(settings)
     project = Project(
         id=str(uuid.uuid4()),
         name=body.name,
         repo_url=body.repo_url,
         subdomain=body.subdomain,
         path=f"{settings.BASE_DIR}/{body.subdomain}",
-        port=body.port,
+        port=_next_port(store),
     )
-    upsert_project(_store_path(settings), project)
+    upsert_project(store, project)
     return ProjectResponse(**project.model_dump(), status="stopped")
 
 
@@ -92,7 +105,7 @@ def deploy_project_endpoint(
     project = _get_or_404(store, project_id)
     try:
         clone_repo(project.repo_url, project.path)
-        deploy_project(project.path)
+        deploy_project(project.path, project.port)
     except DockerError as e:
         logger.error("Deploy failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
@@ -130,7 +143,7 @@ def update_project_endpoint(
     try:
         pull_repo(project.path)
         stop_project(project.path)
-        deploy_project(project.path)
+        deploy_project(project.path, project.port)
     except DockerError as e:
         logger.error("Update failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))

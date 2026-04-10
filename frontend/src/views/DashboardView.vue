@@ -50,7 +50,6 @@
           <tr>
             <th class="text-left px-4 py-3 text-xs font-mono text-gray-500 uppercase tracking-wider bg-gray-50 border-b border-gray-200">Naam</th>
             <th class="text-left px-4 py-3 text-xs font-mono text-gray-500 uppercase tracking-wider bg-gray-50 border-b border-gray-200">Repo</th>
-            <th class="text-left px-4 py-3 text-xs font-mono text-gray-500 uppercase tracking-wider bg-gray-50 border-b border-gray-200">Poort</th>
             <th class="text-left px-4 py-3 text-xs font-mono text-gray-500 uppercase tracking-wider bg-gray-50 border-b border-gray-200">Status</th>
             <th class="text-left px-4 py-3 text-xs font-mono text-gray-500 uppercase tracking-wider bg-gray-50 border-b border-gray-200">Deployed</th>
             <th class="px-4 py-3 bg-gray-50 border-b border-gray-200"></th>
@@ -58,7 +57,7 @@
         </thead>
         <tbody>
           <tr v-if="projects.length === 0">
-            <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-400">Geen projecten — maak er een aan.</td>
+            <td colspan="5" class="px-4 py-8 text-center text-sm text-gray-400">Geen projecten — maak er een aan.</td>
           </tr>
           <tr
             v-for="project in projects"
@@ -77,10 +76,6 @@
             <!-- Repo -->
             <td class="px-4 py-3">
               <span class="text-sm text-gray-500 font-mono">{{ truncate(project.repo_url, 40) }}</span>
-            </td>
-            <!-- Poort -->
-            <td class="px-4 py-3">
-              <span class="badge bg-gray-100 text-gray-600">{{ project.port }}</span>
             </td>
             <!-- Status -->
             <td class="px-4 py-3">
@@ -154,7 +149,7 @@
       <form @submit.prevent="createProject" class="space-y-4">
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Naam</label>
-          <input v-model="form.name" class="input" placeholder="mijn-app" pattern="[a-z0-9][a-z0-9\-]{0,46}[a-z0-9]" required />
+          <input v-model="form.name" class="input" placeholder="Mijn App" required />
         </div>
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Repo URL</label>
@@ -163,10 +158,6 @@
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Subdomain</label>
           <input v-model="form.subdomain" class="input" placeholder="mijn-app" pattern="[a-z0-9][a-z0-9\-]{0,46}[a-z0-9]" required />
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Poort</label>
-          <input v-model.number="form.port" class="input" type="number" min="1" max="65535" placeholder="3000" required />
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" class="btn-secondary" @click="showNewProject = false">Annuleren</button>
@@ -197,7 +188,7 @@ const busy = ref<Record<string, string>>({})
 const showNewProject = ref(false)
 const creating = ref(false)
 
-const form = ref({ name: '', repo_url: '', subdomain: '', port: 3000 })
+const form = ref({ name: '', repo_url: '', subdomain: '' })
 
 const runningCount = computed(() => projects.value.filter(p => p.status === 'running').length)
 const runningProjects = computed(() => projects.value.filter(p => p.status === 'running'))
