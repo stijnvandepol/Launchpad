@@ -230,3 +230,43 @@ def test_update_project_git_fail(store_dir, tmp_path):
         resp = client.post(f"/projects/{pid}/update")
     assert resp.status_code == 502
     assert "git pull" in resp.json()["detail"]
+
+
+def test_update_project_docker_build_fail(store_dir, tmp_path):
+    from unittest.mock import patch, MagicMock
+    project_id = "build-fail-id"
+    client = TestClient(_app(store_dir), raise_server_exceptions=False)
+    with patch("app.routers.projects.get_project") as mock_get, \
+         patch("app.routers.projects.subprocess") as mock_sub:
+        from app.models import Project
+        mock_get.return_value = Project(
+            id=project_id, name="demo", repo_url="https://github.com/x/y",
+            subdomain="demo", path=str(tmp_path), port=3000
+        )
+        # git pull succeeds, docker build fails
+        mock_sub.run.side_effect = [
+            MagicMock(returncode=0, stderr=""),        # git pull
+            MagicMock(returncode=1, stderr="no Dockerfile"),  # docker build
+        ]
+        resp = client.post(f"/projects/{project_id}/update")
+    assert resp.status_code == 502
+    assert "docker build" in resp.json()["detail"]
+
+
+def test_update_project_docker_deploy_fail(store_dir, tmp_path):
+    from unittest.mock import patch, MagicMock
+    from app.services.docker_service import DockerError
+    project_id = "deploy-fail-id"
+    client = TestClient(_app(store_dir), raise_server_exceptions=False)
+    with patch("app.routers.projects.get_project") as mock_get, \
+         patch("app.routers.projects.subprocess") as mock_sub, \
+         patch("app.routers.projects.stop_container", side_effect=DockerError("daemon down")):
+        from app.models import Project
+        mock_get.return_value = Project(
+            id=project_id, name="demo", repo_url="https://github.com/x/y",
+            subdomain="demo", path=str(tmp_path), port=3000
+        )
+        mock_sub.run.return_value = MagicMock(returncode=0, stderr="")
+        resp = client.post(f"/projects/{project_id}/update")
+    assert resp.status_code == 502
+    assert "daemon down" in resp.json()["detail"]
