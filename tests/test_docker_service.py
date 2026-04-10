@@ -63,3 +63,28 @@ def test_stop_is_noop_when_not_found():
 
     with patch("app.services.docker_service.docker.from_env", return_value=client):
         stop_container("my-app")  # should not raise
+
+
+def test_container_status_running():
+    from app.services.docker_service import container_status
+    mock_container = MagicMock()
+    mock_container.status = "running"
+    with patch("app.services.docker_service.docker.from_env") as mock_docker:
+        mock_docker.return_value.containers.get.return_value = mock_container
+        assert container_status("myapp") == "running"
+
+
+def test_container_status_stopped():
+    from app.services.docker_service import container_status
+    mock_container = MagicMock()
+    mock_container.status = "exited"
+    with patch("app.services.docker_service.docker.from_env") as mock_docker:
+        mock_docker.return_value.containers.get.return_value = mock_container
+        assert container_status("myapp") == "stopped"
+
+
+def test_container_status_not_found():
+    from app.services.docker_service import container_status
+    with patch("app.services.docker_service.docker.from_env") as mock_docker:
+        mock_docker.return_value.containers.get.side_effect = NotFound("myapp")
+        assert container_status("myapp") == "stopped"

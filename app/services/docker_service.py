@@ -41,3 +41,16 @@ def stop_container(name: str) -> None:
             pass
     except DockerException as e:
         raise DockerError(f"Docker error: {e}")
+
+
+def container_status(name: str) -> str:
+    """Return 'running' if container exists and is running, otherwise 'stopped'."""
+    try:
+        client = docker.from_env()
+        try:
+            container = client.containers.get(name)
+            return "running" if container.status == "running" else "stopped"
+        except NotFound:
+            return "stopped"
+    except DockerException as e:
+        raise DockerError(f"Docker error: {e}")
