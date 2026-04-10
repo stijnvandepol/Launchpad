@@ -7,7 +7,7 @@ from app.config import get_settings, Settings
 from app.dependencies import require_user
 from app.models import Project, ProjectResponse, DeployRequest, JWTClaims
 from app.services.project_store import load_projects, upsert_project, delete_project, get_project
-from app.services.docker_service import deploy_container, stop_container, container_status, DockerError
+from app.services.docker_service import clone_repo, deploy_project, stop_project, project_status, DockerError
 from app.services.cloudflare_service import add_ingress, remove_ingress
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -26,10 +26,10 @@ def list_projects(
     result = []
     for p in projects:
         try:
-            status = container_status(p.subdomain)
+            ps = project_status(p.path)
         except DockerError:
-            status = "stopped"
-        result.append(ProjectResponse(**p.model_dump(), status=status))
+            ps = "stopped"
+        result.append(ProjectResponse(**p.model_dump(), status=ps))
     return result
 
 
@@ -58,13 +58,18 @@ def delete_project_endpoint(
     _: JWTClaims = Depends(require_user),
 ):
     store = _store_path(settings)
-    if not get_project(store, project_id):
+    project = get_project(store, project_id)
+    if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    try:
+        stop_project(project.path)
+    except DockerError:
+        pass
     delete_project(store, project_id)
 
 
 @router.post("/{project_id}/deploy", response_model=ProjectResponse)
-def deploy_project(
+def deploy_project_endpoint(
     project_id: str,
     settings: Settings = Depends(get_settings),
     _: JWTClaims = Depends(require_user),
@@ -74,7 +79,8 @@ def deploy_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     try:
-        deploy_container(project.subdomain, project.path, project.port)
+        clone_repo(project.repo_url, project.path)
+        deploy_project(project.path)
     except DockerError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
     try:
@@ -87,7 +93,7 @@ def deploy_project(
 
 
 @router.post("/{project_id}/stop", response_model=ProjectResponse)
-def stop_project(
+def stop_project_endpoint(
     project_id: str,
     settings: Settings = Depends(get_settings),
     _: JWTClaims = Depends(require_user),
@@ -97,7 +103,7 @@ def stop_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     try:
-        stop_container(project.subdomain)
+        stop_project(project.path)
     except DockerError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
     try:
@@ -120,7 +126,6 @@ def update_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    # git pull
     result = subprocess.run(
         ["git", "pull"],
         cwd=project.path,
@@ -134,24 +139,9 @@ def update_project(
             detail=f"git pull failed: {result.stderr}",
         )
 
-    # docker build
-    result = subprocess.run(
-        ["docker", "build", "-t", project.subdomain, "."],
-        cwd=project.path,
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    if result.returncode != 0:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"docker build failed: {result.stderr}",
-        )
-
-    # stop oude container en herstart
     try:
-        stop_container(project.subdomain)
-        deploy_container(project.subdomain, project.path, project.port)
+        stop_project(project.path)
+        deploy_project(project.path)
     except DockerError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 

@@ -1,56 +1,46 @@
 # app/services/docker_service.py
-import docker
-from docker.errors import DockerException, NotFound
+import logging
+import subprocess
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class DockerError(Exception):
     pass
 
 
-def deploy_container(name: str, repo_path: str, port: int) -> str:
-    """Run container named `name` from image with same name, binding `port`."""
+def _run(cmd: list[str], cwd: str | None = None, timeout: int = 300) -> subprocess.CompletedProcess:
+    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        logger.error("Command %s failed: %s", cmd, result.stderr)
+        raise DockerError(f"{' '.join(cmd)} failed: {result.stderr}")
+    return result
+
+
+def clone_repo(repo_url: str, path: str) -> None:
+    """Clone repo if the directory doesn't exist yet."""
+    if Path(path).exists():
+        return
+    _run(["git", "clone", repo_url, path], timeout=120)
+
+
+def deploy_project(path: str) -> None:
+    """Run docker compose up -d --build in the project directory."""
+    _run(["docker", "compose", "up", "-d", "--build"], cwd=path)
+
+
+def stop_project(path: str) -> None:
+    """Run docker compose down in the project directory."""
+    _run(["docker", "compose", "down"], cwd=path)
+
+
+def project_status(path: str) -> str:
+    """Return 'running' if any compose service is up, otherwise 'stopped'."""
+    if not Path(path).exists():
+        return "stopped"
     try:
-        client = docker.from_env()
-        try:
-            old = client.containers.get(name)
-            old.stop()
-            old.remove()
-        except NotFound:
-            pass
-        container = client.containers.run(
-            name,  # image tag == container name (built separately)
-            name=name,
-            ports={f"{port}/tcp": port},
-            detach=True,
-            restart_policy={"Name": "unless-stopped"},
-        )
-        return container.id
-    except DockerException as e:
-        raise DockerError(f"Docker error: {e}")
-
-
-def stop_container(name: str) -> None:
-    """Stop and remove container by name. No-op if not found."""
-    try:
-        client = docker.from_env()
-        try:
-            container = client.containers.get(name)
-            container.stop()
-            container.remove()
-        except NotFound:
-            pass
-    except DockerException as e:
-        raise DockerError(f"Docker error: {e}")
-
-
-def container_status(name: str) -> str:
-    """Return 'running' if container exists and is running, otherwise 'stopped'."""
-    try:
-        client = docker.from_env()
-        try:
-            container = client.containers.get(name)
-            return "running" if container.status == "running" else "stopped"
-        except NotFound:
-            return "stopped"
-    except DockerException as e:
-        raise DockerError(f"Docker error: {e}")
+        result = _run(["docker", "compose", "ps", "-q"], cwd=path)
+        return "running" if result.stdout.strip() else "stopped"
+    except DockerError:
+        return "stopped"

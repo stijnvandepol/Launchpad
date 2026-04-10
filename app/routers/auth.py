@@ -1,9 +1,12 @@
 # app/routers/auth.py
+import logging
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
 from app.services.accuro_auth import login_via_accuro, verify_accuro_token, AccuroAuthError
 from app.services.jwt_service import sign_token
 from app.config import get_settings, Settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,7 +26,8 @@ async def login(body: LoginRequest, settings: Settings = Depends(get_settings)):
     try:
         accuro_token = await login_via_accuro(body.email, body.password, settings.ACCURO_URL)
         user = await verify_accuro_token(accuro_token, settings.ACCURO_URL)
-    except AccuroAuthError:
+    except AccuroAuthError as exc:
+        logger.error("Accuro auth failed for %s: %s", body.email, exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed",
