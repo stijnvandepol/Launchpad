@@ -41,8 +41,8 @@
             {{ initials }}
           </div>
           <div class="flex-1 min-w-0 transition-opacity duration-200" :class="expanded ? 'opacity-100' : 'opacity-0 w-0'">
-            <p class="text-xs font-medium text-gray-700 truncate">Beheerder</p>
-            <p class="text-[10px] text-gray-400 font-mono">admin</p>
+            <p class="text-xs font-medium text-gray-700 truncate">{{ auth.user?.name ?? 'Beheerder' }}</p>
+            <p class="text-[10px] text-gray-400 font-mono">{{ auth.user?.role ?? 'admin' }}</p>
           </div>
         </div>
       </div>

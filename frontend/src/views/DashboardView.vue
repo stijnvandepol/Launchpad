@@ -30,6 +30,7 @@
             :key="p.id"
             :href="`https://${p.subdomain}.webvakwerk.nl`"
             target="_blank"
+            rel="noopener noreferrer"
             class="badge bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
           >{{ p.subdomain }}</a>
           <span v-if="runningProjects.length === 0" class="text-sm text-gray-400">—</span>
@@ -40,6 +41,10 @@
     <!-- Table -->
     <div class="card overflow-hidden">
       <div v-if="loading" class="p-8 text-center text-gray-400 text-sm">Laden…</div>
+      <div v-else-if="fetchError" class="p-8 text-center text-red-400 text-sm">
+        <i class="pi pi-exclamation-circle mr-2"></i>
+        Projecten laden mislukt — ververs de pagina.
+      </div>
       <table v-else class="w-full light-table">
         <thead>
           <tr>
@@ -65,6 +70,7 @@
               <a
                 :href="`https://${project.subdomain}.webvakwerk.nl`"
                 target="_blank"
+                rel="noopener noreferrer"
                 class="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors"
               >{{ project.name }}</a>
             </td>
@@ -186,6 +192,7 @@ const confirm = useConfirm()
 
 const projects = ref<Project[]>([])
 const loading = ref(true)
+const fetchError = ref(false)
 const busy = ref<Record<string, string>>({})
 const showNewProject = ref(false)
 const creating = ref(false)
@@ -196,10 +203,12 @@ const runningCount = computed(() => projects.value.filter(p => p.status === 'run
 const runningProjects = computed(() => projects.value.filter(p => p.status === 'running'))
 
 async function fetchProjects() {
+  fetchError.value = false
   try {
     const { data } = await projectsApi.list()
     projects.value = data
   } catch (e: any) {
+    fetchError.value = true
     toast.add({ severity: 'error', summary: 'Fout', detail: e.response?.data?.detail || 'Laden mislukt', life: 4000 })
   } finally {
     loading.value = false
@@ -217,7 +226,7 @@ async function action(project: Project, type: 'deploy' | 'update' | 'stop') {
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Fout', detail: e.response?.data?.detail || `${type} mislukt`, life: 5000 })
   } finally {
-    delete busy.value[project.id]
+    busy.value[project.id] = ''
   }
 }
 
