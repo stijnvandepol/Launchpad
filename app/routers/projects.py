@@ -10,6 +10,7 @@ from app.services.project_store import load_projects, upsert_project, delete_pro
 from app.services.docker_service import (
     clone_repo, pull_repo, deploy_project, stop_project, project_status, DockerError,
 )
+from app.services.cloudflare_service import add_ingress, remove_ingress
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,10 @@ def delete_project_endpoint(
         stop_project(project.path)
     except DockerError:
         pass
+    try:
+        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
+    except Exception:
+        pass
     delete_project(store, project_id)
 
 
@@ -109,6 +114,10 @@ def deploy_project_endpoint(
     except DockerError as e:
         logger.error("Deploy failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+    try:
+        add_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, project.port)
+    except Exception as e:
+        logger.error("Ingress failed for %s: %s", project.subdomain, e)
     project = project.model_copy(update={"deployed_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return ProjectResponse(**project.model_dump(), status="running")
@@ -127,6 +136,10 @@ def stop_project_endpoint(
     except DockerError as e:
         logger.error("Stop failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+    try:
+        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
+    except Exception as e:
+        logger.error("Remove ingress failed for %s: %s", project.subdomain, e)
     project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return ProjectResponse(**project.model_dump(), status="stopped")

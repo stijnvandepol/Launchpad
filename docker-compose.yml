@@ -8,12 +8,16 @@ services:
     volumes:
       - demos:/demos
       - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - cloudflared
+      - /etc/cloudflared:/cloudflared
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    network_mode: host
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - /etc/cloudflared:/etc/cloudflared:ro
+      - /root/.cloudflared:/root/.cloudflared:ro
+
 volumes:
   demos:
