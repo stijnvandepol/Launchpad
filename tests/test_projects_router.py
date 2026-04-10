@@ -105,7 +105,7 @@ def test_deploy_calls_docker_and_cloudflare(store_dir, tmp_path):
         r = client.post(f"/projects/{pid}/deploy")
 
     assert r.status_code == 200
-    mock_deploy.assert_called_once()
+    mock_deploy.assert_called_once_with("demo", f"{store_dir}/demo", 3002)
     mock_cf.assert_called_once()
     assert r.json()["deployed_at"] is not None
 

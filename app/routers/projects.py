@@ -68,7 +68,10 @@ def deploy_project(
         deploy_container(project.subdomain, project.path, project.port)
     except DockerError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-    add_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, project.port)
+    try:
+        add_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, project.port)
+    except (FileNotFoundError, ValueError, Exception) as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Cloudflare config error: {e}")
     project = project.model_copy(update={"deployed_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return project
@@ -88,7 +91,10 @@ def stop_project(
         stop_container(project.subdomain)
     except DockerError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-    remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
+    try:
+        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
+    except (FileNotFoundError, ValueError, Exception) as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Cloudflare config error: {e}")
     project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return project
