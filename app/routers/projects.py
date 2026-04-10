@@ -1,14 +1,15 @@
 # app/routers/projects.py
 import logging
 import uuid
-import subprocess
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.config import get_settings, Settings
 from app.dependencies import require_user
 from app.models import Project, ProjectResponse, DeployRequest, JWTClaims
 from app.services.project_store import load_projects, upsert_project, delete_project, get_project
-from app.services.docker_service import clone_repo, deploy_project, stop_project, project_status, DockerError
+from app.services.docker_service import (
+    clone_repo, pull_repo, deploy_project, stop_project, project_status, DockerError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,16 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 def _store_path(settings: Settings) -> str:
     return f"{settings.BASE_DIR}/projects.json"
+
+
+def _get_or_404(store: str, project_id: str) -> Project:
+    project = get_project(store, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
+
+
+# --- LIST / CREATE / DELETE ---
 
 
 @router.get("", response_model=list[ProjectResponse])
@@ -60,14 +71,15 @@ def delete_project_endpoint(
     _: JWTClaims = Depends(require_user),
 ):
     store = _store_path(settings)
-    project = get_project(store, project_id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    project = _get_or_404(store, project_id)
     try:
         stop_project(project.path)
     except DockerError:
         pass
     delete_project(store, project_id)
+
+
+# --- DEPLOY / STOP / UPDATE ---
 
 
 @router.post("/{project_id}/deploy", response_model=ProjectResponse)
@@ -77,9 +89,7 @@ def deploy_project_endpoint(
     _: JWTClaims = Depends(require_user),
 ):
     store = _store_path(settings)
-    project = get_project(store, project_id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    project = _get_or_404(store, project_id)
     try:
         clone_repo(project.repo_url, project.path)
         deploy_project(project.path)
@@ -98,9 +108,7 @@ def stop_project_endpoint(
     _: JWTClaims = Depends(require_user),
 ):
     store = _store_path(settings)
-    project = get_project(store, project_id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    project = _get_or_404(store, project_id)
     try:
         stop_project(project.path)
     except DockerError as e:
@@ -112,43 +120,20 @@ def stop_project_endpoint(
 
 
 @router.post("/{project_id}/update", response_model=ProjectResponse)
-def update_project(
+def update_project_endpoint(
     project_id: str,
     settings: Settings = Depends(get_settings),
     _: JWTClaims = Depends(require_user),
 ):
     store = _store_path(settings)
-    project = get_project(store, project_id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-
+    project = _get_or_404(store, project_id)
     try:
-        result = subprocess.run(
-            ["git", "pull"],
-            cwd=project.path,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode != 0:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"git pull failed: {result.stderr}",
-            )
-    except subprocess.TimeoutExpired:
-        logger.error("git pull timed out for %s", project.subdomain)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="git pull timed out",
-        )
-
-    try:
+        pull_repo(project.path)
         stop_project(project.path)
         deploy_project(project.path)
     except DockerError as e:
-        logger.error("Update deploy failed for %s: %s", project.subdomain, e)
+        logger.error("Update failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-
     project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return ProjectResponse(**project.model_dump(), status="running")

@@ -25,6 +25,11 @@ def clone_repo(repo_url: str, path: str) -> None:
     _run(["git", "clone", repo_url, path], timeout=120)
 
 
+def pull_repo(path: str) -> None:
+    """Pull latest changes in an existing repo."""
+    _run(["git", "pull"], cwd=path, timeout=120)
+
+
 def deploy_project(path: str) -> None:
     """Run docker compose up -d --build in the project directory."""
     _run(["docker", "compose", "up", "-d", "--build"], cwd=path)
