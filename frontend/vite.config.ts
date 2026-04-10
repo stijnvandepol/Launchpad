@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 3000,
     proxy: {
       '/auth': { target: 'http://localhost:8080', changeOrigin: true },
       '/projects': { target: 'http://localhost:8080', changeOrigin: true },
