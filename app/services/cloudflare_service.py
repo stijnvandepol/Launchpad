@@ -3,11 +3,21 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 
+def _load(p: Path) -> dict:
+    if not p.exists():
+        raise FileNotFoundError(f"Cloudflared config not found: {p}")
+    yaml = YAML()
+    data = yaml.load(p)
+    if data is None:
+        raise ValueError(f"Cloudflared config is empty: {p}")
+    return data
+
+
 def add_ingress(config_path: str, subdomain: str, base_domain: str, port: int) -> None:
     """Insert or replace an ingress rule for subdomain, keeping catch-all last."""
     yaml = YAML()
     p = Path(config_path)
-    data = yaml.load(p)
+    data = _load(p)
     hostname = f"{subdomain}.{base_domain}"
     service = f"http://localhost:{port}"
 
@@ -22,11 +32,16 @@ def add_ingress(config_path: str, subdomain: str, base_domain: str, port: int) -
 
 
 def remove_ingress(config_path: str, subdomain: str, base_domain: str) -> None:
-    """Remove ingress rule for subdomain. No-op if not present."""
+    """Remove ingress rule for subdomain. No-op if not present. Catch-all stays last."""
     yaml = YAML()
     p = Path(config_path)
-    data = yaml.load(p)
+    data = _load(p)
     hostname = f"{subdomain}.{base_domain}"
-    data["ingress"] = [r for r in data.get("ingress", []) if r.get("hostname") != hostname]
+
+    ingress = data.get("ingress", [])
+    catch_all = next((r for r in ingress if "hostname" not in r), None)
+    named = [r for r in ingress if r.get("hostname") != hostname and "hostname" in r]
+    data["ingress"] = named + ([catch_all] if catch_all else [])
+
     with p.open("w") as f:
         yaml.dump(data, f)

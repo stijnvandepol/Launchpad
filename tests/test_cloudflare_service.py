@@ -1,4 +1,5 @@
 # tests/test_cloudflare_service.py
+import pytest
 import tempfile
 import os
 from pathlib import Path
@@ -63,3 +64,15 @@ def test_remove_ingress_noop_when_not_present():
         remove_ingress(p, "nonexistent", "webvakwerk.nl")
         ingress = _read_ingress(p)
         assert len(ingress) == 1
+
+
+def test_add_ingress_raises_when_config_missing():
+    from app.services.cloudflare_service import add_ingress
+    with pytest.raises(FileNotFoundError):
+        add_ingress("/nonexistent/path/config.yml", "app", "webvakwerk.nl", 3001)
+
+
+def test_remove_ingress_raises_when_config_missing():
+    from app.services.cloudflare_service import remove_ingress
+    with pytest.raises(FileNotFoundError):
+        remove_ingress("/nonexistent/path/config.yml", "app", "webvakwerk.nl")
