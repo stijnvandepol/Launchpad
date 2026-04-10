@@ -19,6 +19,6 @@ def sign_token(claims: dict, secret: str) -> str:
 def verify_token(token: str, secret: str) -> JWTClaims:
     try:
         payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
-        return JWTClaims.model_validate(payload)
-    except (JWTError, Exception) as e:
+    except JWTError as e:
         raise ValueError(f"Invalid token: {e}")
+    return JWTClaims.model_validate(payload)
