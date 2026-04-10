@@ -1,8 +1,11 @@
 # app/main.py
+import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from app.routers import auth, projects
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Launchpad", version="1.0.0")
 

@@ -12,7 +12,10 @@ def load_projects(path: str) -> list[Project]:
     text = p.read_text(encoding="utf-8").strip()
     if not text:
         return []
-    data = json.loads(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return []
     return [Project.model_validate(item) for item in data]
 
 

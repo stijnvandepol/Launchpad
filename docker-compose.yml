@@ -7,7 +7,6 @@ services:
     env_file: .env
     volumes:
       - demos:/demos
-      - cf-config:/cloudflared:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - cloudflared
@@ -16,9 +15,5 @@ services:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
-    volumes:
-      - cf-config:/etc/cloudflared
-
 volumes:
   demos:
-  cf-config:

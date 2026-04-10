@@ -23,7 +23,10 @@ async def login_via_accuro(email: str, password: str, accuro_url: str) -> str:
     if resp.status_code != 200:
         raise AccuroAuthError(f"Accuro returned {resp.status_code}")
 
-    return resp.json()["access_token"]
+    data = resp.json()
+    if "access_token" not in data:
+        raise AccuroAuthError("Accuro response missing access_token")
+    return data["access_token"]
 
 
 async def verify_accuro_token(token: str, accuro_url: str) -> AccuroUser:

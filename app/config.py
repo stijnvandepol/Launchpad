@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     ACCURO_ALLOWED_ROLES: str = "admin"
     LAUNCHPAD_JWT_SECRET: str
     BASE_DIR: str = "/demos"
-    CLOUDFLARED_CONFIG: str = "/cloudflared/config.yml"
     TUNNEL_UUID: str
     BASE_DOMAIN: str = "webvakwerk.nl"
     PORT: int = 3000

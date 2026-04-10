@@ -18,12 +18,12 @@ class Project(BaseModel):
     deployed_at: datetime | None = None
     updated_at: datetime | None = None
 
-    @field_validator("name", "subdomain")
+    @field_validator("subdomain")
     @classmethod
-    def validate_slug(cls, v: str, info) -> str:
+    def validate_slug(cls, v: str) -> str:
         if not _SLUG_RE.match(v):
             raise ValueError(
-                f"{info.field_name} must be lowercase alphanumeric with hyphens, max 48 chars"
+                "subdomain must be lowercase alphanumeric with hyphens, max 48 chars"
             )
         return v
 
@@ -62,12 +62,12 @@ class DeployRequest(BaseModel):
     subdomain: str
     port: int = Field(ge=1, le=65535)
 
-    @field_validator("name", "subdomain")
+    @field_validator("subdomain")
     @classmethod
-    def validate_slug(cls, v: str, info) -> str:
+    def validate_slug(cls, v: str) -> str:
         if not _SLUG_RE.match(v):
             raise ValueError(
-                f"{info.field_name} must be lowercase alphanumeric with hyphens, max 48 chars"
+                "subdomain must be lowercase alphanumeric with hyphens, max 48 chars"
             )
         return v
 

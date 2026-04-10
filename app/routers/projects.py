@@ -1,4 +1,5 @@
 # app/routers/projects.py
+import logging
 import uuid
 import subprocess
 from datetime import datetime, timezone
@@ -8,7 +9,8 @@ from app.dependencies import require_user
 from app.models import Project, ProjectResponse, DeployRequest, JWTClaims
 from app.services.project_store import load_projects, upsert_project, delete_project, get_project
 from app.services.docker_service import clone_repo, deploy_project, stop_project, project_status, DockerError
-from app.services.cloudflare_service import add_ingress, remove_ingress
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -82,11 +84,8 @@ def deploy_project_endpoint(
         clone_repo(project.repo_url, project.path)
         deploy_project(project.path)
     except DockerError as e:
+        logger.error("Deploy failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-    try:
-        add_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, project.port)
-    except (FileNotFoundError, ValueError, Exception) as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Cloudflare config error: {e}")
     project = project.model_copy(update={"deployed_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return ProjectResponse(**project.model_dump(), status="running")
@@ -105,11 +104,8 @@ def stop_project_endpoint(
     try:
         stop_project(project.path)
     except DockerError as e:
+        logger.error("Stop failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-    try:
-        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
-    except (FileNotFoundError, ValueError, Exception) as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Cloudflare config error: {e}")
     project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
     return ProjectResponse(**project.model_dump(), status="stopped")
@@ -126,23 +122,31 @@ def update_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    result = subprocess.run(
-        ["git", "pull"],
-        cwd=project.path,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if result.returncode != 0:
+    try:
+        result = subprocess.run(
+            ["git", "pull"],
+            cwd=project.path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"git pull failed: {result.stderr}",
+            )
+    except subprocess.TimeoutExpired:
+        logger.error("git pull timed out for %s", project.subdomain)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"git pull failed: {result.stderr}",
+            detail="git pull timed out",
         )
 
     try:
         stop_project(project.path)
         deploy_project(project.path)
     except DockerError as e:
+        logger.error("Update deploy failed for %s: %s", project.subdomain, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
     project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
