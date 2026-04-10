@@ -35,6 +35,10 @@ class Project(BaseModel):
         return v
 
 
+class ProjectResponse(Project):
+    status: Literal["running", "stopped"] = "stopped"
+
+
 class AccuroUser(BaseModel):
     id: str
     email: str

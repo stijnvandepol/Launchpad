@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.config import get_settings, Settings
 from app.dependencies import require_user
-from app.models import Project, DeployRequest, JWTClaims
+from app.models import Project, ProjectResponse, DeployRequest, JWTClaims
 from app.services.project_store import load_projects, upsert_project, delete_project, get_project
-from app.services.docker_service import deploy_container, stop_container, DockerError
+from app.services.docker_service import deploy_container, stop_container, container_status, DockerError
 from app.services.cloudflare_service import add_ingress, remove_ingress
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -16,12 +16,16 @@ def _store_path(settings: Settings) -> str:
     return f"{settings.BASE_DIR}/projects.json"
 
 
-@router.get("", response_model=list[Project])
+@router.get("", response_model=list[ProjectResponse])
 def list_projects(
     settings: Settings = Depends(get_settings),
     _: JWTClaims = Depends(require_user),
 ):
-    return load_projects(_store_path(settings))
+    projects = load_projects(_store_path(settings))
+    return [
+        ProjectResponse(**p.model_dump(), status=container_status(p.subdomain))
+        for p in projects
+    ]
 
 
 @router.post("", response_model=Project, status_code=status.HTTP_201_CREATED)

@@ -141,3 +141,19 @@ def test_deploy_returns_502_on_docker_error(store_dir):
         r = client.post(f"/projects/{pid}/deploy")
 
     assert r.status_code == 502
+
+
+def test_list_projects_includes_status(store_dir):
+    client = TestClient(_app(store_dir))
+    client.post("/projects", json={
+        "name": "my-app", "repo_url": "https://github.com/x/y",
+        "subdomain": "my-app", "port": 3001,
+    })
+    with patch("app.routers.projects.container_status", return_value="stopped"):
+        resp = client.get("/projects")
+    assert resp.status_code == 200
+    data = resp.json()
+    # every project must have a status field
+    for project in data:
+        assert "status" in project
+        assert project["status"] in ("running", "stopped")
