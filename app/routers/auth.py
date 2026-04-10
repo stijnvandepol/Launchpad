@@ -30,7 +30,7 @@ async def login(body: LoginRequest, settings: Settings = Depends(get_settings)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if user.role not in settings.allowed_roles:
+    if user.role.upper() not in settings.allowed_roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Role not permitted")
 
     if not user.is_active:

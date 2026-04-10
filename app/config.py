@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     @property
     def allowed_roles(self) -> list[str]:
-        return [r.strip() for r in self.ACCURO_ALLOWED_ROLES.split(",") if r.strip()]
+        return [r.strip().upper() for r in self.ACCURO_ALLOWED_ROLES.split(",") if r.strip()]
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
