@@ -57,6 +57,20 @@
 .p-dialog-header-close { color: #9ca3af !important; background: transparent !important; }
 .p-dialog-header-close:hover { color: #111827 !important; background: #f3f4f6 !important; }
 .p-dialog-mask { background: rgba(0,0,0,0.3) !important; backdrop-filter: blur(4px) !important; }
+
+/* === CONFIRM DIALOG === */
+.p-confirmdialog .p-dialog { background: #ffffff !important; }
+.p-confirmdialog .p-dialog-content { background: #ffffff !important; color: #374151 !important; }
+.p-confirmdialog .p-dialog-footer { background: #ffffff !important; border-top: 1px solid #e5e7eb !important; }
+.p-confirmdialog .p-dialog-footer button { background: #f3f4f6 !important; color: #374151 !important; border: 1px solid #d1d5db !important; }
+.p-confirmdialog .p-dialog-footer button:hover { background: #e5e7eb !important; color: #111827 !important; }
+.p-confirmdialog .p-dialog-footer .p-button-danger,
+.p-confirmdialog .p-dialog-footer .p-confirm-dialog-accept { background: #dc2626 !important; color: #fff !important; border-color: #dc2626 !important; }
+.p-confirmdialog .p-dialog-footer .p-button-danger:hover,
+.p-confirmdialog .p-dialog-footer .p-confirm-dialog-accept:hover { background: #b91c1c !important; }
+.p-confirmdialog .p-confirm-dialog-icon { color: #f59e0b !important; }
+.p-confirmdialog .p-confirm-dialog-message { color: #374151 !important; }
+
 .p-toast .p-toast-message { background: #ffffff !important; border: 1px solid #e5e7eb !important; border-radius: 0.5rem !important; box-shadow: 0 8px 30px rgba(0,0,0,0.08) !important; color: #374151 !important; }
 .p-toast-summary { color: #111827 !important; font-weight: 600 !important; }
 .p-toast-detail { color: #6b7280 !important; }

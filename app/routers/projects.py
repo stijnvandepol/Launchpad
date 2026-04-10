@@ -33,7 +33,7 @@ def list_projects(
     return result
 
 
-@router.post("", response_model=Project, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(
     body: DeployRequest,
     settings: Settings = Depends(get_settings),
@@ -48,7 +48,7 @@ def create_project(
         port=body.port,
     )
     upsert_project(_store_path(settings), project)
-    return project
+    return ProjectResponse(**project.model_dump(), status="stopped")
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -63,7 +63,7 @@ def delete_project_endpoint(
     delete_project(store, project_id)
 
 
-@router.post("/{project_id}/deploy", response_model=Project)
+@router.post("/{project_id}/deploy", response_model=ProjectResponse)
 def deploy_project(
     project_id: str,
     settings: Settings = Depends(get_settings),
@@ -83,10 +83,10 @@ def deploy_project(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Cloudflare config error: {e}")
     project = project.model_copy(update={"deployed_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
-    return project
+    return ProjectResponse(**project.model_dump(), status="running")
 
 
-@router.post("/{project_id}/stop", response_model=Project)
+@router.post("/{project_id}/stop", response_model=ProjectResponse)
 def stop_project(
     project_id: str,
     settings: Settings = Depends(get_settings),
@@ -106,7 +106,7 @@ def stop_project(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Cloudflare config error: {e}")
     project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
     upsert_project(store, project)
-    return project
+    return ProjectResponse(**project.model_dump(), status="stopped")
 
 
 @router.post("/{project_id}/update", response_model=ProjectResponse)

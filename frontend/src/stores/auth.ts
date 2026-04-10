@@ -17,9 +17,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!token.value)
 
+  function decodeJwt(jwt: string): User | null {
+    try {
+      const payload = JSON.parse(atob(jwt.split('.')[1]))
+      return { name: payload.name, email: payload.email, role: payload.role }
+    } catch {
+      return null
+    }
+  }
+
   // Restore token on page load
   if (token.value) {
     setToken(token.value)
+    user.value = decodeJwt(token.value)
   }
 
   // 401 interceptor
@@ -38,6 +48,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = data.access_token
     localStorage.setItem('token', data.access_token)
     setToken(data.access_token)
+    user.value = decodeJwt(data.access_token)
   }
 
   function logout() {
