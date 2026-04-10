@@ -22,9 +22,20 @@ Authentication is delegated to [Accuro](https://github.com/stijnvandepol/accuro)
 
 ## Setup
 
+### Docker Compose (recommended)
+
+```bash
+cp .env.example .env   # fill in your values
+docker compose up -d
+```
+
+This starts Launchpad and cloudflared together. Launchpad gets access to the Docker socket so it can manage containers on the host.
+
+### Manual
+
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # fill in your values
+cp .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
