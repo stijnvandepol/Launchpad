@@ -25,6 +25,7 @@ services:
     volumes:
       - /etc/cloudflared:/etc/cloudflared:ro
       - /root/.cloudflared:/root/.cloudflared:ro
+      - /root/.cloudflared:/root/.cloudflared:ro
 
 volumes:
   demos:
