@@ -1,6 +1,6 @@
 <template>
   <span class="badge" :class="badgeClass">
-    <span class="w-1.5 h-1.5 rounded-full mr-1" :class="dotClass"></span>
+    <span v-if="!spinning" class="w-1.5 h-1.5 rounded-full mr-1" :class="dotClass"></span>
     <svg
       v-if="spinning"
       class="animate-spin h-3 w-3 mr-1"

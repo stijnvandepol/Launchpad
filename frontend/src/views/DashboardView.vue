@@ -219,6 +219,7 @@
     <!-- Log Drawer -->
     <LogDrawer
       v-if="activeLogProject"
+      :key="activeLogProject.id"
       :visible="showLogDrawer"
       :project-id="activeLogProject.id"
       :project-name="activeLogProject.name"
@@ -284,10 +285,10 @@ onUnmounted(stopPolling)
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
 async function fetchProjects() {
-  fetchError.value = false
   try {
     const { data } = await projectsApi.list()
     projects.value = data
+    fetchError.value = false
     if (hasActiveJobs.value) startPolling()
     else stopPolling()
   } catch {
@@ -303,11 +304,18 @@ onMounted(async () => {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+const actionMap: Record<'clone' | 'deploy' | 'update' | 'stop' | 'restart', (id: string) => Promise<any>> = {
+  clone: projectsApi.clone,
+  deploy: projectsApi.deploy,
+  update: projectsApi.update,
+  stop: projectsApi.stop,
+  restart: projectsApi.restart,
+}
+
 async function action(project: Project, type: 'clone' | 'deploy' | 'update' | 'stop' | 'restart') {
   busy.value[project.id] = type
   try {
-    const fn = (projectsApi as any)[type] as (id: string) => Promise<any>
-    const { data } = await fn(project.id)
+    const { data } = await actionMap[type](project.id)
     // Optimistically update status in list
     const idx = projects.value.findIndex(p => p.id === project.id)
     if (idx !== -1) projects.value[idx] = data

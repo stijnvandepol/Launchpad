@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 
 export function useProjectLogs(projectId: string) {
   const logs = ref<string[]>([])
@@ -6,7 +7,12 @@ export function useProjectLogs(projectId: string) {
   let source: EventSource | null = null
 
   function start() {
-    const token = localStorage.getItem('token')
+    // Token passed as query param because native EventSource does not support
+    // custom headers. The backend require_user_sse dependency validates it.
+    // Accept the short-lived JWT exposure in server access logs for this
+    // personal/team-scale deployment.
+    const auth = useAuthStore()
+    const token = auth.token
     if (!token) return
     close()
     logs.value = []

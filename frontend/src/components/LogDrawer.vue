@@ -68,5 +68,5 @@ watch(logs, async () => {
   if (logContainer.value) {
     logContainer.value.scrollTop = logContainer.value.scrollHeight
   }
-}, { deep: true })
+})
 </script>
