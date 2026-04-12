@@ -22,8 +22,19 @@ def get_engine(path: str):
         conn.commit()
 
     SQLModel.metadata.create_all(engine)
+    _migrate(engine)
     _engines[path] = engine
     return engine
+
+
+def _migrate(engine) -> None:
+    """Apply incremental schema migrations for columns added after initial release."""
+    with engine.connect() as conn:
+        # container_port added in v2 — default 8080 for all existing projects
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(project)"))}
+        if "container_port" not in existing:
+            conn.execute(text("ALTER TABLE project ADD COLUMN container_port INTEGER NOT NULL DEFAULT 8080"))
+            conn.commit()
 
 
 def get_session(path: str) -> Session:
