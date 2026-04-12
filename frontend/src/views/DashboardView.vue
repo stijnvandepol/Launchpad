@@ -38,6 +38,27 @@
       </div>
     </div>
 
+    <!-- Repo requirements info block -->
+    <div class="card p-4">
+      <button
+        class="flex items-center gap-2 text-sm font-medium text-gray-700 w-full text-left"
+        @click="showRepoInfo = !showRepoInfo"
+      >
+        <i class="pi pi-info-circle text-blue-500"></i>
+        Vereisten voor je repository
+        <i class="pi ml-auto text-gray-400 transition-transform" :class="showRepoInfo ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+      </button>
+      <div v-if="showRepoInfo" class="mt-3 text-sm text-gray-600 space-y-2 border-t border-gray-100 pt-3">
+        <p>Zorg dat je repository voldoet aan de volgende vereisten:</p>
+        <ul class="list-disc list-inside space-y-1 text-gray-500">
+          <li>Een werkende <code class="bg-gray-100 px-1 rounded">Dockerfile</code> <strong>of</strong> <code class="bg-gray-100 px-1 rounded">docker-compose.yml</code> in de root</li>
+          <li>De applicatie luistert op de poort die wordt doorgegeven via de <code class="bg-gray-100 px-1 rounded">PORT</code> omgevingsvariabele</li>
+          <li>Optioneel: een <code class="bg-gray-100 px-1 rounded">.env.example</code> bestand voor documentatie</li>
+        </ul>
+        <p class="text-xs text-gray-400">Na het clonen wordt gecontroleerd of de vereiste bestanden aanwezig zijn.</p>
+      </div>
+    </div>
+
     <!-- Table -->
     <div class="card overflow-hidden">
       <div v-if="loading" class="p-8 text-center text-gray-400 text-sm">Laden…</div>
@@ -57,21 +78,29 @@
         </thead>
         <tbody>
           <tr v-if="projects.length === 0">
-            <td colspan="5" class="px-4 py-8 text-center text-sm text-gray-400">Geen projecten — maak er een aan.</td>
+            <td colspan="5" class="px-4 py-8 text-center text-sm text-gray-400">
+              Geen projecten — maak er een aan.
+            </td>
           </tr>
           <tr
             v-for="project in projects"
             :key="project.id"
-            class="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+            class="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+            @click="openLogs(project)"
           >
             <!-- Naam -->
-            <td class="px-4 py-3">
+            <td class="px-4 py-3" @click.stop>
               <a
+                v-if="project.status === 'running'"
                 :href="`https://${project.subdomain}.webvakwerk.nl`"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors"
               >{{ project.name }}</a>
+              <span v-else class="text-sm font-medium text-gray-900">{{ project.name }}</span>
+              <p v-if="project.error" class="text-xs text-red-500 mt-0.5 truncate max-w-xs" :title="project.error">
+                {{ project.error }}
+              </p>
             </td>
             <!-- Repo -->
             <td class="px-4 py-3">
@@ -79,61 +108,70 @@
             </td>
             <!-- Status -->
             <td class="px-4 py-3">
-              <span
-                class="badge"
-                :class="project.status === 'running'
-                  ? 'bg-green-50 text-green-700'
-                  : 'bg-gray-100 text-gray-500'"
-              >
-                <span
-                  class="w-1.5 h-1.5 rounded-full mr-1"
-                  :class="project.status === 'running' ? 'bg-green-500' : 'bg-gray-400'"
-                ></span>
-                {{ project.status }}
-              </span>
+              <StatusBadge :status="project.status" />
             </td>
             <!-- Deployed -->
             <td class="px-4 py-3">
-              <span
-                class="text-sm text-gray-500"
-                :title="project.deployed_at ?? ''"
-              >{{ relativeTime(project.deployed_at) }}</span>
+              <span class="text-sm text-gray-500" :title="project.deployed_at ?? ''">
+                {{ relativeTime(project.deployed_at) }}
+              </span>
             </td>
             <!-- Acties -->
-            <td class="px-4 py-3">
+            <td class="px-4 py-3" @click.stop>
               <div class="flex items-center gap-1 justify-end">
+                <!-- Clone (pending, failed) -->
                 <button
+                  v-if="project.status === 'pending' || project.status === 'failed'"
+                  class="btn-secondary text-xs px-2 py-1"
+                  :disabled="!!busy[project.id]"
+                  title="Clone repository"
+                  @click="action(project, 'clone')"
+                >
+                  <svg v-if="busy[project.id] === 'clone'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+                  <i v-else class="pi pi-download text-xs"></i>
+                </button>
+
+                <!-- Deploy (cloned, stopped, failed-after-build) -->
+                <button
+                  v-if="project.status === 'cloned' || project.status === 'stopped'"
                   class="btn-primary text-xs px-2 py-1"
-                  :disabled="project.status === 'running' || !!busy[project.id]"
-                  @click="action(project, 'deploy')"
+                  :disabled="!!busy[project.id]"
                   title="Deploy"
+                  @click="action(project, 'deploy')"
                 >
                   <svg v-if="busy[project.id] === 'deploy'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
                   <i v-else class="pi pi-play text-xs"></i>
                 </button>
+
+                <!-- Update + Restart (running) -->
+                <template v-if="project.status === 'running'">
+                  <button
+                    class="btn-secondary text-xs px-2 py-1"
+                    :disabled="!!busy[project.id]"
+                    title="Update (git pull + rebuild)"
+                    @click="action(project, 'update')"
+                  >
+                    <svg v-if="busy[project.id] === 'update'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+                    <i v-else class="pi pi-refresh text-xs"></i>
+                  </button>
+                  <button
+                    class="btn-danger text-xs px-2 py-1"
+                    :disabled="!!busy[project.id]"
+                    title="Stop"
+                    @click="confirmStop(project)"
+                  >
+                    <svg v-if="busy[project.id] === 'stop'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+                    <i v-else class="pi pi-stop-circle text-xs"></i>
+                  </button>
+                </template>
+
+                <!-- Delete (stopped, failed, cloned) -->
                 <button
-                  class="btn-secondary text-xs px-2 py-1"
-                  :disabled="project.status === 'stopped' || !!busy[project.id]"
-                  @click="action(project, 'update')"
-                  title="Update (git pull + rebuild)"
-                >
-                  <svg v-if="busy[project.id] === 'update'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
-                  <i v-else class="pi pi-refresh text-xs"></i>
-                </button>
-                <button
-                  class="btn-danger text-xs px-2 py-1"
-                  :disabled="project.status === 'stopped' || !!busy[project.id]"
-                  @click="confirmStop(project)"
-                  title="Stop"
-                >
-                  <svg v-if="busy[project.id] === 'stop'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
-                  <i v-else class="pi pi-stop-circle text-xs"></i>
-                </button>
-                <button
+                  v-if="['stopped', 'failed', 'cloned', 'pending'].includes(project.status)"
                   class="btn-icon"
-                  :disabled="project.status === 'running' || !!busy[project.id]"
-                  @click="confirmDelete(project)"
+                  :disabled="!!busy[project.id]"
                   title="Verwijder"
+                  @click="confirmDelete(project)"
                 >
                   <i class="pi pi-trash text-xs"></i>
                 </button>
@@ -168,14 +206,25 @@
         </div>
       </form>
     </Dialog>
+
+    <!-- Log Drawer -->
+    <LogDrawer
+      v-if="activeLogProject"
+      :visible="showLogDrawer"
+      :project-id="activeLogProject.id"
+      :project-name="activeLogProject.name"
+      @close="showLogDrawer = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import Dialog from 'primevue/dialog'
+import StatusBadge from '@/components/StatusBadge.vue'
+import LogDrawer from '@/components/LogDrawer.vue'
 import { projectsApi, type Project } from '@/api/projects'
 
 const toast = useToast()
@@ -187,47 +236,90 @@ const fetchError = ref(false)
 const busy = ref<Record<string, string>>({})
 const showNewProject = ref(false)
 const creating = ref(false)
+const showRepoInfo = ref(false)
+const showLogDrawer = ref(false)
+const activeLogProject = ref<Project | null>(null)
 
 const form = ref({ name: '', repo_url: '', subdomain: '' })
 
 const runningCount = computed(() => projects.value.filter(p => p.status === 'running').length)
 const runningProjects = computed(() => projects.value.filter(p => p.status === 'running'))
+const hasActiveJobs = computed(() =>
+  projects.value.some(p => p.status === 'cloning' || p.status === 'building')
+)
+
+// ── Polling ───────────────────────────────────────────────────────────────────
+
+let pollInterval: ReturnType<typeof setInterval> | null = null
+
+function startPolling() {
+  if (pollInterval) return
+  pollInterval = setInterval(async () => {
+    if (!hasActiveJobs.value) {
+      stopPolling()
+      return
+    }
+    await fetchProjects()
+  }, 3000)
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+}
+
+onUnmounted(stopPolling)
+
+// ── Data fetching ─────────────────────────────────────────────────────────────
 
 async function fetchProjects() {
   fetchError.value = false
   try {
     const { data } = await projectsApi.list()
     projects.value = data
-  } catch (e: any) {
+    if (hasActiveJobs.value) startPolling()
+    else stopPolling()
+  } catch {
     fetchError.value = true
-    toast.add({ severity: 'error', summary: 'Fout', detail: e.response?.data?.detail || 'Laden mislukt', life: 4000 })
-  } finally {
-    loading.value = false
   }
 }
 
-async function action(project: Project, type: 'deploy' | 'update' | 'stop') {
+onMounted(async () => {
+  loading.value = true
+  await fetchProjects()
+  loading.value = false
+})
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+
+async function action(project: Project, type: 'clone' | 'deploy' | 'update' | 'stop') {
   busy.value[project.id] = type
   try {
-    const fn = type === 'deploy' ? projectsApi.deploy : type === 'update' ? projectsApi.update : projectsApi.stop
+    const fn = (projectsApi as any)[type] as (id: string) => Promise<any>
     const { data } = await fn(project.id)
+    // Optimistically update status in list
     const idx = projects.value.findIndex(p => p.id === project.id)
     if (idx !== -1) projects.value[idx] = data
-    toast.add({ severity: 'success', summary: 'Klaar', detail: `${type} geslaagd`, life: 3000 })
+    if (hasActiveJobs.value) startPolling()
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Fout', detail: e.response?.data?.detail || `${type} mislukt`, life: 5000 })
+    toast.add({
+      severity: 'error',
+      summary: 'Fout',
+      detail: e?.response?.data?.detail ?? 'Actie mislukt',
+      life: 4000,
+    })
   } finally {
-    busy.value[project.id] = ''
+    delete busy.value[project.id]
   }
 }
 
 function confirmStop(project: Project) {
   confirm.require({
-    message: `Container "${project.name}" stoppen en domein verwijderen?`,
-    header: 'Bevestig stop',
-    icon: 'pi pi-stop-circle',
-    acceptLabel: 'Stop',
-    rejectLabel: 'Annuleren',
+    message: `Stop container voor "${project.name}"?`,
+    header: 'Container stoppen',
+    icon: 'pi pi-exclamation-triangle',
     acceptClass: 'btn-danger',
     accept: () => action(project, 'stop'),
   })
@@ -235,18 +327,24 @@ function confirmStop(project: Project) {
 
 function confirmDelete(project: Project) {
   confirm.require({
-    message: `Project "${project.name}" definitief verwijderen?`,
-    header: 'Bevestig verwijdering',
+    message: `Verwijder project "${project.name}" inclusief bestanden en containers?`,
+    header: 'Project verwijderen',
     icon: 'pi pi-trash',
-    acceptLabel: 'Verwijder',
-    rejectLabel: 'Annuleren',
+    acceptClass: 'btn-danger',
     accept: async () => {
+      busy.value[project.id] = 'delete'
       try {
         await projectsApi.remove(project.id)
         projects.value = projects.value.filter(p => p.id !== project.id)
-        toast.add({ severity: 'success', summary: 'Verwijderd', detail: `"${project.name}" is verwijderd`, life: 3000 })
       } catch (e: any) {
-        toast.add({ severity: 'error', summary: 'Fout', detail: e.response?.data?.detail || 'Verwijderen mislukt', life: 5000 })
+        toast.add({
+          severity: 'error',
+          summary: 'Fout',
+          detail: e?.response?.data?.detail ?? 'Verwijderen mislukt',
+          life: 4000,
+        })
+      } finally {
+        delete busy.value[project.id]
       }
     },
   })
@@ -258,29 +356,41 @@ async function createProject() {
     const { data } = await projectsApi.create(form.value)
     projects.value.push(data)
     showNewProject.value = false
-    form.value = { name: '', repo_url: '', subdomain: '', port: 3000 }
-    toast.add({ severity: 'success', summary: 'Aangemaakt', detail: `"${data.name}" aangemaakt`, life: 3000 })
+    form.value = { name: '', repo_url: '', subdomain: '' }
+    toast.add({ severity: 'success', summary: 'Aangemaakt', detail: data.name, life: 3000 })
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Fout', detail: e.response?.data?.detail || 'Aanmaken mislukt', life: 5000 })
+    toast.add({
+      severity: 'error',
+      summary: 'Fout',
+      detail: e?.response?.data?.detail ?? 'Aanmaken mislukt',
+      life: 4000,
+    })
   } finally {
     creating.value = false
   }
 }
 
-function truncate(str: string, max: number) {
-  return str.length > max ? str.slice(0, max) + '…' : str
+// ── Log drawer ────────────────────────────────────────────────────────────────
+
+function openLogs(project: Project) {
+  activeLogProject.value = project
+  showLogDrawer.value = true
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function truncate(s: string, n: number) {
+  return s.length > n ? s.slice(0, n) + '…' : s
 }
 
 function relativeTime(iso: string | null): string {
   if (!iso) return '—'
-  const diff = (new Date(iso).getTime() - Date.now()) / 1000
-  const fmt = new Intl.RelativeTimeFormat('nl', { numeric: 'auto' })
-  const abs = Math.abs(diff)
-  if (abs < 60) return fmt.format(Math.round(diff), 'second')
-  if (abs < 3600) return fmt.format(Math.round(diff / 60), 'minute')
-  if (abs < 86400) return fmt.format(Math.round(diff / 3600), 'hour')
-  return fmt.format(Math.round(diff / 86400), 'day')
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'zojuist'
+  if (mins < 60) return `${mins}m geleden`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}u geleden`
+  return `${Math.floor(hours / 24)}d geleden`
 }
-
-onMounted(fetchProjects)
 </script>
