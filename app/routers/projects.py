@@ -47,13 +47,14 @@ def _to_response(p: Project, live_status: ProjectStatus | None = None) -> Projec
 # ── Background task functions ────────────────────────────────────────────────
 
 
-def _do_clone(project_id: str, repo_url: str, path: str, store: str) -> None:
+def _do_clone(project_id: str, repo_url: str, path: str, store: str, github_pat: str | None = None) -> None:
     update_project_status(store, project_id, ProjectStatus.cloning)
     append_log(store, project_id, f"=== Clone started: {repo_url} ===")
     try:
         if shutil.os.path.exists(path):
             shutil.rmtree(path)
-        for line in _run_streaming(["git", "clone", repo_url, path], timeout=120):
+        clone_url = repo_url.replace("https://", f"https://{github_pat}@", 1) if github_pat else repo_url
+        for line in _run_streaming(["git", "clone", clone_url, path], timeout=120):
             append_log(store, project_id, line)
         validate_repo(path)
         append_log(store, project_id, "=== Clone complete ===")
