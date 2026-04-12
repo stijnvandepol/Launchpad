@@ -74,7 +74,7 @@ class Project(SQLModel, table=True):
     def __init__(self, **data):
         errors = []
         name = data.get("name", "")
-        if name and not _NAME_RE.match(name):
+        if not _NAME_RE.match(name):
             errors.append({"loc": ("name",), "msg": "name must contain only alphanumeric characters, hyphens, or underscores", "input": name})
         port = data.get("port")
         if port is not None:
@@ -85,8 +85,11 @@ class Project(SQLModel, table=True):
             except (TypeError, ValueError):
                 errors.append({"loc": ("port",), "msg": "port must be an integer", "input": port})
         repo_url = data.get("repo_url", "")
-        if repo_url and not _SAFE_URL_RE.match(repo_url):
+        if not _SAFE_URL_RE.match(repo_url):
             errors.append({"loc": ("repo_url",), "msg": "repo_url must be a safe https:// URL", "input": repo_url})
+        subdomain = data.get("subdomain", "")
+        if not _SLUG_RE.match(subdomain):
+            errors.append({"loc": ("subdomain",), "msg": "subdomain must be lowercase alphanumeric with hyphens, max 48 chars", "input": subdomain})
         if errors:
             _raise_validation_errors(type(self).__name__, errors)
         super().__init__(**data)
@@ -106,7 +109,7 @@ class ProjectResponse(BaseModel):
     subdomain:   str
     path:        str
     port:        int
-    status:      str
+    status:      ProjectStatus
     error:       Optional[str] = None
     deployed_at: Optional[datetime] = None
     updated_at:  Optional[datetime] = None
