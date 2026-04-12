@@ -21,7 +21,7 @@ services:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     network_mode: host
-    command: tunnel --config /etc/cloudflared/config.yaml run
+    command: tunnel --config /etc/cloudflared/config.yml run
     volumes:
       - /etc/cloudflared:/etc/cloudflared:ro
       - /root/.cloudflared:/root/.cloudflared:ro
