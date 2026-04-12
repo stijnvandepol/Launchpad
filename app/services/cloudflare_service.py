@@ -59,7 +59,22 @@ def remove_ingress(config_path: str, subdomain: str, base_domain: str) -> None:
 
 
 def _restart_cloudflared() -> None:
-    """Restart the cloudflared container to pick up config changes."""
+    """Hot-reload cloudflared config via metrics API (no downtime).
+    Falls back to container restart if the metrics endpoint is unavailable.
+    """
+    try:
+        result = subprocess.run(
+            ["curl", "-sf", "-X", "POST", "http://localhost:2000/config/reload"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            logger.info("Hot-reloaded cloudflared config")
+            return
+        logger.warning("Hot-reload failed (exit %s): %s", result.returncode, result.stderr)
+    except Exception as e:
+        logger.warning("Hot-reload unavailable: %s", e)
+
+    # Fallback: container restart
     try:
         result = subprocess.run(
             ["docker", "ps", "-q", "--filter", "name=tunnel-projects"],
@@ -71,7 +86,7 @@ def _restart_cloudflared() -> None:
                 ["docker", "restart", container_id],
                 capture_output=True, text=True, timeout=30,
             )
-            logger.info("Restarted cloudflared container")
+            logger.info("Restarted cloudflared container (fallback)")
         else:
             logger.warning("No cloudflared container found to restart")
     except Exception as e:
