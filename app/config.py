@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     TUNNEL_UUID: str
     BASE_DOMAIN: str = "webvakwerk.nl"
     PORT: int = 3000
+    GITHUB_PAT: str | None = None  # optional, for private repos
 
     @field_validator("LAUNCHPAD_JWT_SECRET")
     @classmethod

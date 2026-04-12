@@ -68,7 +68,6 @@ class Project(SQLModel, table=True):
     error:       Optional[str]  = SQLField(default=None)
     deployed_at: Optional[datetime] = SQLField(default=None)
     updated_at:  Optional[datetime] = SQLField(default=None)
-    github_pat:  Optional[str]  = SQLField(default=None)  # never returned in API responses
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -116,23 +115,10 @@ class ProjectResponse(BaseModel):
     updated_at:  Optional[datetime] = None
 
 
-# GitHub PAT: classic token (ghp_...) or fine-grained token, alphanumeric only
-_PAT_RE = re.compile(r'^[A-Za-z0-9_-]+$')
-
-
 class DeployRequest(BaseModel):
     name:       str
     repo_url:   str
     subdomain:  str
-    github_pat: Optional[str] = None
-
-    @field_validator("github_pat")
-    @classmethod
-    def validate_pat(cls, v: Optional[str]) -> Optional[str]:
-        if v and not _PAT_RE.match(v):
-            raise ValueError("github_pat must contain only alphanumeric characters, hyphens, or underscores")
-        return v or None
-
     @field_validator("subdomain")
     @classmethod
     def validate_slug(cls, v: str) -> str:

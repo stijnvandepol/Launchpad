@@ -21,7 +21,6 @@ export interface CreateProjectPayload {
   name: string
   repo_url: string
   subdomain: string
-  github_pat?: string
 }
 
 export const projectsApi = {

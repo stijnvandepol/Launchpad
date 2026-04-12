@@ -206,13 +206,6 @@
           <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Subdomain</label>
           <input v-model="form.subdomain" class="input" placeholder="mijn-app" pattern="[a-z0-9][a-z0-9\-]{0,46}[a-z0-9]" required />
         </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">
-            GitHub PAT
-            <span class="normal-case font-normal text-gray-400 ml-1">(optioneel, alleen voor private repos)</span>
-          </label>
-          <input v-model="form.github_pat" class="input font-mono" placeholder="ghp_xxxxxxxxxxxx" type="password" autocomplete="off" />
-        </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" class="btn-secondary" @click="showNewProject = false">Annuleren</button>
           <button type="submit" class="btn-primary" :disabled="creating">
@@ -257,7 +250,7 @@ const showRepoInfo = ref(false)
 const showLogDrawer = ref(false)
 const activeLogProject = ref<Project | null>(null)
 
-const form = ref({ name: '', repo_url: '', subdomain: '', github_pat: '' })
+const form = ref({ name: '', repo_url: '', subdomain: '' })
 
 const runningCount = computed(() => projects.value.filter(p => p.status === 'running').length)
 const runningProjects = computed(() => projects.value.filter(p => p.status === 'running'))
@@ -377,10 +370,10 @@ function confirmDelete(project: Project) {
 async function createProject() {
   creating.value = true
   try {
-    const { data } = await projectsApi.create({ ...form.value, github_pat: form.value.github_pat || undefined })
+    const { data } = await projectsApi.create(form.value)
     projects.value.push(data)
     showNewProject.value = false
-    form.value = { name: '', repo_url: '', subdomain: '', github_pat: '' }
+    form.value = { name: '', repo_url: '', subdomain: '' }
     toast.add({ severity: 'success', summary: 'Aangemaakt', detail: data.name, life: 3000 })
   } catch (e: any) {
     toast.add({

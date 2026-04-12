@@ -128,7 +128,6 @@ def create_project(
         repo_url=body.repo_url,
         subdomain=body.subdomain,
         path=f"{settings.BASE_DIR}/{body.subdomain}",
-        github_pat=body.github_pat,
         port=next_port(store),
     )
     upsert_project(store, project)
@@ -150,7 +149,7 @@ def clone_project_endpoint(
             detail=f"Cannot clone from status '{project.status.value}'",
         )
     background_tasks.add_task(
-        _do_clone, project.id, project.repo_url, project.path, store, project.github_pat,
+        _do_clone, project.id, project.repo_url, project.path, store, settings.GITHUB_PAT,
     )
     return _to_response(project, ProjectStatus.cloning)
 
