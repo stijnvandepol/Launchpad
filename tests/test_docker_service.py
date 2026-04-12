@@ -41,6 +41,7 @@ def test_write_compose_override_creates_file(tmp_path):
     override = tmp_path / "docker-compose.override.yml"
     assert override.exists()
     content = override.read_text()
+    assert "build: ." in content
     assert "512m" in content
     assert "0.5" in content
     assert "9001:8080" in content

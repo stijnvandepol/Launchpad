@@ -11,6 +11,7 @@ def _compose_override(port: int) -> str:
     return f"""\
 services:
   app:
+    build: .
     mem_limit: 512m
     cpus: "0.5"
     network_mode: bridge
