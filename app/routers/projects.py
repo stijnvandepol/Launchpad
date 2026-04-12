@@ -35,11 +35,11 @@ def _get_or_404(store: str, project_id: str) -> Project:
     return p
 
 
-def _to_response(p: Project, live_status: str | None = None) -> ProjectResponse:
+def _to_response(p: Project, live_status: ProjectStatus | None = None) -> ProjectResponse:
     return ProjectResponse(
         id=p.id, name=p.name, repo_url=p.repo_url, subdomain=p.subdomain,
         path=p.path, port=p.port,
-        status=live_status if live_status is not None else p.status.value,
+        status=live_status if live_status is not None else p.status,
         error=p.error, deployed_at=p.deployed_at, updated_at=p.updated_at,
     )
 
@@ -107,7 +107,7 @@ def list_projects(
                 live = project_status(p.path)
                 if live != "running":
                     update_project_status(store, p.id, ProjectStatus.stopped)
-                    result.append(_to_response(p, "stopped"))
+                    result.append(_to_response(p, ProjectStatus.stopped))
                     continue
             except DockerError:
                 pass
@@ -151,7 +151,7 @@ def clone_project_endpoint(
     background_tasks.add_task(
         _do_clone, project.id, project.repo_url, project.path, store,
     )
-    return _to_response(project, "cloning")
+    return _to_response(project, ProjectStatus.cloning)
 
 
 @router.post("/{project_id}/deploy", response_model=ProjectResponse)
@@ -173,7 +173,7 @@ def deploy_project_endpoint(
         _do_deploy, project.id, project.path, project.port,
         project.subdomain, store, settings,
     )
-    return _to_response(project, "building")
+    return _to_response(project, ProjectStatus.building)
 
 
 @router.post("/{project_id}/stop", response_model=ProjectResponse)
@@ -218,7 +218,7 @@ def restart_project_endpoint(
         _do_deploy, project.id, project.path, project.port,
         project.subdomain, store, settings,
     )
-    return _to_response(get_project(store, project.id), "building")
+    return _to_response(get_project(store, project.id), ProjectStatus.building)
 
 
 @router.post("/{project_id}/update", response_model=ProjectResponse)
@@ -231,13 +231,15 @@ def update_project_endpoint(
     project = _get_or_404(store, project_id)
     try:
         pull_repo(project.path)
+        update_project_status(store, project_id, ProjectStatus.stopped)
         stop_project(project.path)
+        update_project_status(store, project_id, ProjectStatus.building)
         deploy_project(project.path, project.port)
     except DockerError as e:
+        update_project_status(store, project_id, ProjectStatus.failed, str(e))
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-    project = project.model_copy(update={"updated_at": datetime.now(timezone.utc)})
-    upsert_project(store, project)
-    return _to_response(project)
+    update_project_status(store, project_id, ProjectStatus.running)
+    return _to_response(get_project(store, project_id))
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -286,6 +288,7 @@ async def logs_endpoint(
                 yield {"data": log.text}
                 last_id = log.id
             if p is None or p.status in terminal:
+                yield {"event": "done", "data": ""}
                 break
 
     return EventSourceResponse(event_generator())

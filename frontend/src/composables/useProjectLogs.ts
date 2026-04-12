@@ -21,8 +21,15 @@ export function useProjectLogs(projectId: string) {
     source.onmessage = (e) => {
       logs.value.push(e.data)
     }
-    source.onerror = () => {
+    source.addEventListener('done', () => {
+      // Server signals intentional end — close cleanly and let the drawer auto-close
       streaming.value = false
+      source?.close()
+      source = null
+    })
+    source.onerror = () => {
+      // Connection error or server restart — close source silently without
+      // triggering the drawer's auto-close watcher
       source?.close()
       source = null
     }
