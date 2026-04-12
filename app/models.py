@@ -58,16 +58,17 @@ class ProjectStatus(str, Enum):
 
 
 class Project(SQLModel, table=True):
-    id:          str            = SQLField(primary_key=True)
-    name:        str
-    repo_url:    str
-    subdomain:   str            = SQLField(unique=True, index=True)
-    path:        str
-    port:        int            = SQLField(ge=1, le=65535)
-    status:      ProjectStatus  = SQLField(default=ProjectStatus.pending)
-    error:       Optional[str]  = SQLField(default=None)
-    deployed_at: Optional[datetime] = SQLField(default=None)
-    updated_at:  Optional[datetime] = SQLField(default=None)
+    id:             str            = SQLField(primary_key=True)
+    name:           str
+    repo_url:       str
+    subdomain:      str            = SQLField(unique=True, index=True)
+    path:           str
+    port:           int            = SQLField(ge=1, le=65535)
+    container_port: int            = SQLField(default=8080, ge=1, le=65535)
+    status:         ProjectStatus  = SQLField(default=ProjectStatus.pending)
+    error:          Optional[str]  = SQLField(default=None)
+    deployed_at:    Optional[datetime] = SQLField(default=None)
+    updated_at:     Optional[datetime] = SQLField(default=None)
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -84,6 +85,14 @@ class Project(SQLModel, table=True):
                     errors.append({"loc": ("port",), "msg": "port must be between 1 and 65535", "input": port})
             except (TypeError, ValueError):
                 errors.append({"loc": ("port",), "msg": "port must be an integer", "input": port})
+        container_port = data.get("container_port", 8080)
+        if container_port is not None:
+            try:
+                cp_int = int(container_port)
+                if not (1 <= cp_int <= 65535):
+                    errors.append({"loc": ("container_port",), "msg": "container_port must be between 1 and 65535", "input": container_port})
+            except (TypeError, ValueError):
+                errors.append({"loc": ("container_port",), "msg": "container_port must be an integer", "input": container_port})
         repo_url = data.get("repo_url", "")
         if not _SAFE_URL_RE.match(repo_url):
             errors.append({"loc": ("repo_url",), "msg": "repo_url must be a safe https:// URL", "input": repo_url})
@@ -103,22 +112,24 @@ class LogLine(SQLModel, table=True):
 
 
 class ProjectResponse(BaseModel):
-    id:          str
-    name:        str
-    repo_url:    str
-    subdomain:   str
-    path:        str
-    port:        int
-    status:      ProjectStatus
-    error:       Optional[str] = None
-    deployed_at: Optional[datetime] = None
-    updated_at:  Optional[datetime] = None
+    id:             str
+    name:           str
+    repo_url:       str
+    subdomain:      str
+    path:           str
+    port:           int
+    container_port: int = 8080
+    status:         ProjectStatus
+    error:          Optional[str] = None
+    deployed_at:    Optional[datetime] = None
+    updated_at:     Optional[datetime] = None
 
 
 class DeployRequest(BaseModel):
-    name:       str
-    repo_url:   str
-    subdomain:  str
+    name:           str
+    repo_url:       str
+    subdomain:      str
+    container_port: int = 8080
     @field_validator("subdomain")
     @classmethod
     def validate_slug(cls, v: str) -> str:

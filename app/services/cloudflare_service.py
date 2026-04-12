@@ -27,8 +27,8 @@ def _save(path: Path, data: dict) -> None:
         _yaml.dump(data, f)
 
 
-def add_ingress(config_path: str, subdomain: str, base_domain: str, port: int) -> None:
-    """Add or update an ingress rule, then restart cloudflared."""
+def add_ingress(config_path: str, subdomain: str, base_domain: str, port: int, metrics_url: str) -> None:
+    """Add or update an ingress rule, then hot-reload cloudflared."""
     p = Path(config_path)
     data = _load(p)
     hostname = f"{subdomain}.{base_domain}"
@@ -41,11 +41,11 @@ def add_ingress(config_path: str, subdomain: str, base_domain: str, port: int) -
     data["ingress"] = named + [_CATCH_ALL]
 
     _save(p, data)
-    _restart_cloudflared()
+    _reload_cloudflared(metrics_url)
 
 
-def remove_ingress(config_path: str, subdomain: str, base_domain: str) -> None:
-    """Remove an ingress rule, then restart cloudflared."""
+def remove_ingress(config_path: str, subdomain: str, base_domain: str, metrics_url: str) -> None:
+    """Remove an ingress rule, then hot-reload cloudflared."""
     p = Path(config_path)
     data = _load(p)
     hostname = f"{subdomain}.{base_domain}"
@@ -55,39 +55,19 @@ def remove_ingress(config_path: str, subdomain: str, base_domain: str) -> None:
     data["ingress"] = named + [_CATCH_ALL]
 
     _save(p, data)
-    _restart_cloudflared()
+    _reload_cloudflared(metrics_url)
 
 
-def _restart_cloudflared() -> None:
-    """Hot-reload cloudflared config via metrics API (no downtime).
-    Falls back to container restart if the metrics endpoint is unavailable.
-    """
+def _reload_cloudflared(metrics_url: str) -> None:
+    """Hot-reload cloudflared config via the metrics API (no downtime)."""
     try:
         result = subprocess.run(
-            ["curl", "-sf", "-X", "POST", "http://host.docker.internal:2000/config/reload"],
+            ["curl", "-sf", "-X", "POST", f"{metrics_url}/config/reload"],
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode == 0:
-            logger.info("Hot-reloaded cloudflared config")
+            logger.info("Hot-reloaded cloudflared config via %s", metrics_url)
             return
-        logger.warning("Hot-reload failed (exit %s): %s", result.returncode, result.stderr)
+        logger.error("Hot-reload failed (exit %s): %s", result.returncode, result.stderr)
     except Exception as e:
-        logger.warning("Hot-reload unavailable: %s", e)
-
-    # Fallback: container restart
-    try:
-        result = subprocess.run(
-            ["docker", "ps", "-q", "--filter", "name=tunnel-projects"],
-            capture_output=True, text=True, timeout=10,
-        )
-        container_id = result.stdout.strip()
-        if container_id:
-            subprocess.run(
-                ["docker", "restart", container_id],
-                capture_output=True, text=True, timeout=30,
-            )
-            logger.info("Restarted cloudflared container (fallback)")
-        else:
-            logger.warning("No cloudflared container found to restart")
-    except Exception as e:
-        logger.error("Failed to restart cloudflared: %s", e)
+        logger.error("Hot-reload unavailable at %s: %s", metrics_url, e)

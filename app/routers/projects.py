@@ -38,7 +38,7 @@ def _get_or_404(store: str, project_id: str) -> Project:
 def _to_response(p: Project, live_status: ProjectStatus | None = None) -> ProjectResponse:
     return ProjectResponse(
         id=p.id, name=p.name, repo_url=p.repo_url, subdomain=p.subdomain,
-        path=p.path, port=p.port,
+        path=p.path, port=p.port, container_port=p.container_port,
         status=live_status if live_status is not None else p.status,
         error=p.error, deployed_at=p.deployed_at, updated_at=p.updated_at,
     )
@@ -69,7 +69,9 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
     append_log(store, project_id, f"=== Deploy started (port {port}) ===")
     try:
         strip_host_ports(path)
-        write_compose_override(path, port)
+        p_pre = get_project(store, project_id)
+        container_port = p_pre.container_port if p_pre else 8080
+        write_compose_override(path, port, container_port)
         for line in _run_streaming(
             ["docker", "compose", "up", "-d", "--build"],
             cwd=path,
@@ -77,7 +79,7 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
         ):
             append_log(store, project_id, line)
         try:
-            add_ingress(settings.CLOUDFLARED_CONFIG, subdomain, settings.BASE_DOMAIN, port)
+            add_ingress(settings.CLOUDFLARED_CONFIG, subdomain, settings.BASE_DOMAIN, port, settings.CLOUDFLARED_METRICS_URL)
         except Exception as e:
             logger.warning("Ingress failed for %s: %s", subdomain, e)
             append_log(store, project_id, f"Warning: ingress setup failed: {e}")
@@ -130,6 +132,7 @@ def create_project(
         subdomain=body.subdomain,
         path=f"{settings.BASE_DIR}/{body.subdomain}",
         port=next_port(store),
+        container_port=body.container_port,
     )
     upsert_project(store, project)
     return _to_response(project)
@@ -190,7 +193,7 @@ def stop_project_endpoint(
     except DockerError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
     try:
-        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
+        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, settings.CLOUDFLARED_METRICS_URL)
     except Exception as e:
         logger.warning("Remove ingress failed for %s: %s", project.subdomain, e)
     update_project_status(store, project.id, ProjectStatus.stopped)
@@ -211,7 +214,7 @@ def restart_project_endpoint(
     except DockerError:
         pass
     try:
-        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
+        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, settings.CLOUDFLARED_METRICS_URL)
     except Exception:
         pass
     update_project_status(store, project.id, ProjectStatus.stopped)
@@ -256,7 +259,7 @@ def delete_project_endpoint(
     except DockerError:
         pass
     try:
-        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN)
+        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, settings.CLOUDFLARED_METRICS_URL)
     except Exception:
         pass
     if shutil.os.path.exists(project.path):

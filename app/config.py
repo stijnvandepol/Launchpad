@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     BASE_DOMAIN: str = "webvakwerk.nl"
     PORT: int = 3000
     GITHUB_PAT: str | None = None  # optional, for private repos
+    CLOUDFLARED_METRICS_URL: str = "http://host.docker.internal:20241"
 
     @field_validator("LAUNCHPAD_JWT_SECRET")
     @classmethod

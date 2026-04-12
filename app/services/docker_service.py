@@ -7,7 +7,7 @@ from typing import Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
-def _compose_override(port: int) -> str:
+def _compose_override(port: int, container_port: int = 8080) -> str:
     return f"""\
 services:
   app:
@@ -17,9 +17,9 @@ services:
     network_mode: bridge
     restart: "no"
     ports:
-      - "{port}:8080"
+      - "{port}:{container_port}"
     environment:
-      PORT: "8080"
+      PORT: "{container_port}"
 """
 
 
@@ -101,13 +101,12 @@ def strip_host_ports(path: str) -> None:
             yaml.dump(data, f)
 
 
-def write_compose_override(path: str, port: int) -> None:
+def write_compose_override(path: str, port: int, container_port: int = 8080) -> None:
     """Write resource-limit + port-mapping override. Always regenerated so repo cannot override limits.
-    Maps the unique assigned host port to container port 8080 so apps that hardcode
-    port 8080 work out of the box. PORT=8080 env var is also injected for apps that
-    respect the PORT convention.
+    Maps the unique assigned host port to the configured container port. PORT env var is also
+    injected so apps that respect the PORT convention pick up the right value.
     """
-    (Path(path) / "docker-compose.override.yml").write_text(_compose_override(port))
+    (Path(path) / "docker-compose.override.yml").write_text(_compose_override(port, container_port))
 
 
 def pull_repo(path: str) -> None:
