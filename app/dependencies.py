@@ -1,5 +1,5 @@
 # app/dependencies.py
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import ValidationError
 from app.services.jwt_service import verify_token
@@ -20,4 +20,18 @@ def require_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def require_user_sse(
+    token: str = Query(..., description="JWT token for SSE auth"),
+    settings: Settings = Depends(get_settings),
+) -> JWTClaims:
+    """Dependency for SSE endpoints — accepts token as query param."""
+    try:
+        return verify_token(token, settings.LAUNCHPAD_JWT_SECRET)
+    except (ValueError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
         )
