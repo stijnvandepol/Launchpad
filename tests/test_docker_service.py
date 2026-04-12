@@ -55,6 +55,29 @@ def test_write_compose_override_is_idempotent(tmp_path):
     assert content.count("mem_limit") == 1
 
 
+def test_strip_host_ports_removes_ports(tmp_path):
+    from app.services.docker_service import strip_host_ports
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text(
+        "services:\n  app:\n    image: myapp\n    ports:\n      - \"8080:8080\"\n"
+    )
+    strip_host_ports(str(tmp_path))
+    assert "ports" not in compose.read_text()
+
+
+def test_strip_host_ports_noop_without_ports(tmp_path):
+    from app.services.docker_service import strip_host_ports
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text("services:\n  app:\n    image: myapp\n")
+    strip_host_ports(str(tmp_path))
+    assert "image: myapp" in compose.read_text()
+
+
+def test_strip_host_ports_noop_without_compose(tmp_path):
+    from app.services.docker_service import strip_host_ports
+    strip_host_ports(str(tmp_path))  # should not raise
+
+
 def test_deploy_project_calls_compose_up(tmp_path):
     from app.services.docker_service import deploy_project
     with patch("app.services.docker_service._run") as mock_run:

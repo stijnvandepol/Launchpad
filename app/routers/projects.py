@@ -15,7 +15,7 @@ from app.services.project_store import (
 )
 from app.services.log_service import append_log, get_logs, get_logs_after
 from app.services.docker_service import (
-    _run_streaming, validate_repo, write_compose_override,
+    _run_streaming, validate_repo, write_compose_override, strip_host_ports,
     deploy_project, stop_project, project_status, pull_repo, DockerError,
 )
 from app.services.cloudflare_service import add_ingress, remove_ingress
@@ -67,6 +67,7 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
     update_project_status(store, project_id, ProjectStatus.building)
     append_log(store, project_id, f"=== Deploy started (port {port}) ===")
     try:
+        strip_host_ports(path)
         write_compose_override(path, port)
         for line in _run_streaming(
             ["docker", "compose", "up", "-d", "--build"],

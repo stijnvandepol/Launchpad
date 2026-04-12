@@ -75,6 +75,31 @@ def validate_repo(path: str) -> None:
         raise DockerError("No Dockerfile or docker-compose.yml found in repository root")
 
 
+def strip_host_ports(path: str) -> None:
+    """Remove all 'ports:' entries from the repo's docker-compose.yml so the platform
+    controls host port assignment exclusively via the override file. Without this, repos
+    that hardcode 'ports: - "8080:8080"' would conflict when multiple projects run.
+    """
+    compose_file = Path(path) / "docker-compose.yml"
+    if not compose_file.exists():
+        return
+    from ruamel.yaml import YAML
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    with open(compose_file) as f:
+        data = yaml.load(f)
+    if not data or "services" not in data:
+        return
+    changed = False
+    for service in (data["services"] or {}).values():
+        if service and "ports" in service:
+            del service["ports"]
+            changed = True
+    if changed:
+        with open(compose_file, "w") as f:
+            yaml.dump(data, f)
+
+
 def write_compose_override(path: str, port: int) -> None:
     """Write resource-limit + port-mapping override. Always regenerated so repo cannot override limits.
     Maps the unique assigned host port to container port 8080 so apps that hardcode
