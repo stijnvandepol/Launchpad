@@ -223,6 +223,7 @@
       :visible="showLogDrawer"
       :project-id="activeLogProject.id"
       :project-name="activeLogProject.name"
+      :active-status="activeLogProject.status"
       @close="showLogDrawer = false"
     />
   </div>

@@ -47,6 +47,7 @@ const props = defineProps<{
   visible: boolean
   projectId: string
   projectName: string
+  activeStatus: string
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -54,13 +55,15 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const logContainer = ref<HTMLElement | null>(null)
 const { logs, streaming, start, close } = useProjectLogs(props.projectId)
 
+const ACTIVE_STATUSES = ['cloning', 'building', 'pending']
+
 watch(() => props.visible, (val) => {
   if (val) start()
   else close()
 })
 
 watch(streaming, (val) => {
-  if (!val && props.visible) emit('close')
+  if (!val && props.visible && ACTIVE_STATUSES.includes(props.activeStatus)) emit('close')
 })
 
 watch(logs, async () => {
