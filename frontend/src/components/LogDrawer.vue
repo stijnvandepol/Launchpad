@@ -49,7 +49,7 @@ const props = defineProps<{
   projectName: string
 }>()
 
-defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{ (e: 'close'): void }>()
 
 const logContainer = ref<HTMLElement | null>(null)
 const { logs, streaming, start, close } = useProjectLogs(props.projectId)
@@ -57,6 +57,10 @@ const { logs, streaming, start, close } = useProjectLogs(props.projectId)
 watch(() => props.visible, (val) => {
   if (val) start()
   else close()
+})
+
+watch(streaming, (val) => {
+  if (!val && props.visible) emit('close')
 })
 
 watch(logs, async () => {

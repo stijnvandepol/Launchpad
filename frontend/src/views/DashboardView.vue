@@ -131,9 +131,9 @@
                   <i v-else class="pi pi-download text-xs"></i>
                 </button>
 
-                <!-- Deploy (cloned, stopped, failed-after-build) -->
+                <!-- Deploy (cloned, stopped, failed) -->
                 <button
-                  v-if="project.status === 'cloned' || project.status === 'stopped'"
+                  v-if="project.status === 'cloned' || project.status === 'stopped' || project.status === 'failed'"
                   class="btn-primary text-xs px-2 py-1"
                   :disabled="!!busy[project.id]"
                   title="Deploy"
@@ -153,6 +153,15 @@
                   >
                     <svg v-if="busy[project.id] === 'update'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
                     <i v-else class="pi pi-refresh text-xs"></i>
+                  </button>
+                  <button
+                    class="btn-secondary text-xs px-2 py-1"
+                    :disabled="!!busy[project.id]"
+                    title="Herstart"
+                    @click="action(project, 'restart')"
+                  >
+                    <svg v-if="busy[project.id] === 'restart'" class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+                    <i v-else class="pi pi-replay text-xs"></i>
                   </button>
                   <button
                     class="btn-danger text-xs px-2 py-1"
@@ -294,7 +303,7 @@ onMounted(async () => {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-async function action(project: Project, type: 'clone' | 'deploy' | 'update' | 'stop') {
+async function action(project: Project, type: 'clone' | 'deploy' | 'update' | 'stop' | 'restart') {
   busy.value[project.id] = type
   try {
     const fn = (projectsApi as any)[type] as (id: string) => Promise<any>
