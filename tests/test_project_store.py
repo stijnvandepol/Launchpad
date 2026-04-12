@@ -1,50 +1,85 @@
-import json
 import pytest
-from pathlib import Path
+from datetime import datetime, timezone
 
 
 @pytest.fixture
-def store_path(tmp_path):
-    p = tmp_path / "projects.json"
-    p.write_text("[]")
-    return str(p)
+def store(tmp_path):
+    return str(tmp_path / "projects.db")
 
 
-def test_load_empty(store_path):
-    from app.services.project_store import load_projects
-    assert load_projects(store_path) == []
-
-
-def test_save_and_load(store_path):
-    from app.services.project_store import save_projects, load_projects
+def _make_project(**kwargs):
     from app.models import Project
-    project = Project(
-        id="1", name="demo", repo_url="https://github.com/x/y",
+    defaults = dict(
+        id="p1", name="demo", repo_url="https://github.com/x/y",
         subdomain="demo", path="/demos/demo", port=3001,
     )
-    save_projects(store_path, [project])
-    loaded = load_projects(store_path)
+    defaults.update(kwargs)
+    return Project(**defaults)
+
+
+def test_load_empty(store):
+    from app.services.project_store import load_projects
+    assert load_projects(store) == []
+
+
+def test_upsert_and_load(store):
+    from app.services.project_store import upsert_project, load_projects
+    p = _make_project()
+    upsert_project(store, p)
+    loaded = load_projects(store)
     assert len(loaded) == 1
     assert loaded[0].name == "demo"
 
 
-def test_save_is_atomic(store_path, monkeypatch):
-    from app.services.project_store import save_projects
-    from app.models import Project
-    import os
+def test_upsert_updates_existing(store):
+    from app.services.project_store import upsert_project, get_project
+    p = _make_project()
+    upsert_project(store, p)
+    p2 = p.model_copy(update={"name": "updated"})
+    upsert_project(store, p2)
+    loaded = get_project(store, "p1")
+    assert loaded.name == "updated"
 
-    original_replace = os.replace
-    calls = []
 
-    def patched_replace(src, dst):
-        calls.append((src, dst))
-        original_replace(src, dst)
+def test_get_project_not_found(store):
+    from app.services.project_store import get_project
+    assert get_project(store, "nonexistent") is None
 
-    monkeypatch.setattr(os, "replace", patched_replace)
 
-    project = Project(
-        id="1", name="demo", repo_url="https://github.com/x/y",
-        subdomain="demo", path="/demos/demo", port=3001,
-    )
-    save_projects(store_path, [project])
-    assert len(calls) == 1
+def test_delete_project(store):
+    from app.services.project_store import upsert_project, delete_project, load_projects
+    upsert_project(store, _make_project())
+    delete_project(store, "p1")
+    assert load_projects(store) == []
+
+
+def test_update_project_status(store):
+    from app.services.project_store import upsert_project, update_project_status, get_project
+    from app.models import ProjectStatus
+    upsert_project(store, _make_project())
+    update_project_status(store, "p1", ProjectStatus.running)
+    p = get_project(store, "p1")
+    assert p.status == ProjectStatus.running
+    assert p.error is None
+
+
+def test_update_project_status_with_error(store):
+    from app.services.project_store import upsert_project, update_project_status, get_project
+    from app.models import ProjectStatus
+    upsert_project(store, _make_project())
+    update_project_status(store, "p1", ProjectStatus.failed, error="build blew up")
+    p = get_project(store, "p1")
+    assert p.status == ProjectStatus.failed
+    assert p.error == "build blew up"
+
+
+def test_next_port_starts_at_8001(store):
+    from app.services.project_store import next_port
+    assert next_port(store) == 8001
+
+
+def test_next_port_skips_used(store):
+    from app.services.project_store import upsert_project, next_port
+    upsert_project(store, _make_project(port=8001))
+    upsert_project(store, _make_project(id="p2", subdomain="demo2", port=8002))
+    assert next_port(store) == 8003

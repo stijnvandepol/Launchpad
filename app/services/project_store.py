@@ -1,47 +1,61 @@
-import json
-import os
-import tempfile
-from pathlib import Path
-from app.models import Project
+# app/services/project_store.py
+from datetime import datetime, timezone
+from typing import Optional
+from sqlmodel import select
+from app.db import get_session
+from app.models import Project, ProjectStatus
+
+_PORT_START = 8001
 
 
 def load_projects(path: str) -> list[Project]:
-    p = Path(path)
-    if not p.exists():
-        return []
-    text = p.read_text(encoding="utf-8").strip()
-    if not text:
-        return []
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        return []
-    return [Project.model_validate(item) for item in data]
+    with get_session(path) as session:
+        return list(session.exec(select(Project)).all())
 
 
-def save_projects(path: str, projects: list[Project]) -> None:
-    p = Path(path)
-    data = [project.model_dump(mode="json") for project in projects]
-    dir_ = p.parent
-    with tempfile.NamedTemporaryFile(
-        "w", dir=dir_, suffix=".tmp", delete=False, encoding="utf-8"
-    ) as f:
-        json.dump(data, f, indent=2, default=str)
-        tmp_path = f.name
-    os.replace(tmp_path, path)
-
-
-def get_project(path: str, project_id: str) -> Project | None:
-    return next((p for p in load_projects(path) if p.id == project_id), None)
+def get_project(path: str, project_id: str) -> Optional[Project]:
+    with get_session(path) as session:
+        return session.get(Project, project_id)
 
 
 def upsert_project(path: str, project: Project) -> None:
-    projects = load_projects(path)
-    projects = [p for p in projects if p.id != project.id]
-    projects.append(project)
-    save_projects(path, projects)
+    with get_session(path) as session:
+        data = project.model_dump()
+        existing = session.get(Project, project.id)
+        if existing:
+            for key, val in data.items():
+                setattr(existing, key, val)
+        else:
+            session.add(Project(**data))
+        session.commit()
 
 
 def delete_project(path: str, project_id: str) -> None:
-    projects = [p for p in load_projects(path) if p.id != project_id]
-    save_projects(path, projects)
+    with get_session(path) as session:
+        p = session.get(Project, project_id)
+        if p:
+            session.delete(p)
+            session.commit()
+
+
+def update_project_status(
+    path: str,
+    project_id: str,
+    status: ProjectStatus,
+    error: Optional[str] = None,
+) -> None:
+    with get_session(path) as session:
+        p = session.get(Project, project_id)
+        if p:
+            p.status = status
+            p.error = error
+            p.updated_at = datetime.now(timezone.utc)
+            session.commit()
+
+
+def next_port(path: str) -> int:
+    used = {p.port for p in load_projects(path)}
+    port = _PORT_START
+    while port in used:
+        port += 1
+    return port
