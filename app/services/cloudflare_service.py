@@ -64,7 +64,7 @@ def _restart_cloudflared() -> None:
     """
     try:
         result = subprocess.run(
-            ["curl", "-sf", "-X", "POST", "http://localhost:2000/config/reload"],
+            ["curl", "-sf", "-X", "POST", "http://host.docker.internal:2000/config/reload"],
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode == 0:
