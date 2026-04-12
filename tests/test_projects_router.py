@@ -6,8 +6,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from app.config import Settings, get_settings
 from app.dependencies import require_user
-from app.models import JWTClaims, Project
-from app.services.docker_service import DockerError
+from app.models import JWTClaims, ProjectStatus
 
 SECRET = "a" * 32
 FAKE_USER = JWTClaims(
@@ -36,11 +35,17 @@ def _app(tmp_dir: str):
 
 @pytest.fixture
 def store_dir(tmp_path):
-    (tmp_path / "projects.json").write_text("[]")
     return str(tmp_path)
 
 
-# --- LIST / CREATE / DELETE ---
+def _create_project(client, subdomain="demo"):
+    return client.post("/projects", json={
+        "name": "Demo", "repo_url": "https://github.com/x/y",
+        "subdomain": subdomain,
+    }).json()
+
+
+# ── LIST / CREATE / DELETE ────────────────────────────────────────────────────
 
 
 def test_list_projects_empty(store_dir):
@@ -51,30 +56,26 @@ def test_list_projects_empty(store_dir):
 def test_create_project(store_dir):
     client = TestClient(_app(store_dir))
     r = client.post("/projects", json={
-        "name": "My App", "repo_url": "https://github.com/x/y",
-        "subdomain": "my-app", "port": 3001,
+        "name": "My-App", "repo_url": "https://github.com/x/y", "subdomain": "my-app",
     })
     assert r.status_code == 201
-    assert r.json()["name"] == "My App"
+    assert r.json()["name"] == "My-App"
+    assert r.json()["status"] == "pending"
     assert "id" in r.json()
 
 
 def test_create_and_list(store_dir):
     client = TestClient(_app(store_dir))
-    client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3002,
-    })
+    _create_project(client)
     assert len(client.get("/projects").json()) == 1
 
 
 def test_delete_project(store_dir):
     client = TestClient(_app(store_dir))
-    pid = client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3002,
-    }).json()["id"]
-    assert client.delete(f"/projects/{pid}").status_code == 204
+    pid = _create_project(client)["id"]
+    with patch("app.routers.projects.stop_project"), \
+         patch("app.routers.projects.remove_ingress"):
+        assert client.delete(f"/projects/{pid}").status_code == 204
     assert client.get("/projects").json() == []
 
 
@@ -83,72 +84,101 @@ def test_delete_nonexistent_returns_404(store_dir):
     assert client.delete("/projects/no-such-id").status_code == 404
 
 
-# --- DEPLOY / STOP ---
+# ── CLONE ─────────────────────────────────────────────────────────────────────
 
 
-def test_deploy_clones_and_runs_compose(store_dir):
+def test_clone_starts_background_task(store_dir):
     client = TestClient(_app(store_dir))
-    pid = client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3002,
-    }).json()["id"]
-
-    with patch("app.routers.projects.clone_repo") as mock_clone, \
-         patch("app.routers.projects.deploy_project") as mock_deploy:
-        r = client.post(f"/projects/{pid}/deploy")
-
+    pid = _create_project(client)["id"]
+    with patch("app.routers.projects._do_clone") as mock_clone:
+        r = client.post(f"/projects/{pid}/clone")
     assert r.status_code == 200
     mock_clone.assert_called_once()
-    mock_deploy.assert_called_once()
-    assert r.json()["deployed_at"] is not None
 
 
-def test_deploy_returns_502_on_docker_error(store_dir):
+def test_clone_returns_cloning_status(store_dir):
+    client = TestClient(_app(store_dir))
+    pid = _create_project(client)["id"]
+    with patch("app.routers.projects._do_clone"):
+        r = client.post(f"/projects/{pid}/clone")
+    assert r.json()["status"] == "cloning"
+
+
+def test_clone_from_running_returns_409(store_dir):
+    from app.services.project_store import update_project_status
     client = TestClient(_app(store_dir), raise_server_exceptions=False)
-    pid = client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3002,
-    }).json()["id"]
+    p = _create_project(client, subdomain="demo2")
+    update_project_status(store_dir + "/projects.db", p["id"], ProjectStatus.running)
+    r = client.post(f"/projects/{p['id']}/clone")
+    assert r.status_code == 409
 
-    with patch("app.routers.projects.clone_repo"), \
-         patch("app.routers.projects.deploy_project", side_effect=DockerError("fail")):
-        r = client.post(f"/projects/{pid}/deploy")
 
-    assert r.status_code == 502
+# ── DEPLOY ────────────────────────────────────────────────────────────────────
+
+
+def test_deploy_starts_background_task(store_dir):
+    from app.services.project_store import update_project_status
+    client = TestClient(_app(store_dir))
+    p = _create_project(client)
+    update_project_status(store_dir + "/projects.db", p["id"], ProjectStatus.cloned)
+    with patch("app.routers.projects._do_deploy") as mock_deploy:
+        r = client.post(f"/projects/{p['id']}/deploy")
+    assert r.status_code == 200
+    mock_deploy.assert_called_once()
+
+
+def test_deploy_returns_building_status(store_dir):
+    from app.services.project_store import update_project_status
+    client = TestClient(_app(store_dir))
+    p = _create_project(client)
+    update_project_status(store_dir + "/projects.db", p["id"], ProjectStatus.cloned)
+    with patch("app.routers.projects._do_deploy"):
+        r = client.post(f"/projects/{p['id']}/deploy")
+    assert r.json()["status"] == "building"
+
+
+def test_deploy_from_pending_returns_409(store_dir):
+    client = TestClient(_app(store_dir), raise_server_exceptions=False)
+    p = _create_project(client)
+    r = client.post(f"/projects/{p['id']}/deploy")
+    assert r.status_code == 409
+
+
+# ── STOP ──────────────────────────────────────────────────────────────────────
 
 
 def test_stop_calls_compose_down(store_dir):
     client = TestClient(_app(store_dir))
-    pid = client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3002,
-    }).json()["id"]
-
-    with patch("app.routers.projects.stop_project") as mock_stop:
+    pid = _create_project(client)["id"]
+    with patch("app.routers.projects.stop_project") as mock_stop, \
+         patch("app.routers.projects.remove_ingress"):
         r = client.post(f"/projects/{pid}/stop")
-
     assert r.status_code == 200
     mock_stop.assert_called_once()
-    assert r.json()["updated_at"] is not None
+    assert r.json()["status"] == "stopped"
 
 
-# --- UPDATE ---
+def test_stop_returns_502_on_error(store_dir):
+    from app.services.docker_service import DockerError
+    client = TestClient(_app(store_dir), raise_server_exceptions=False)
+    pid = _create_project(client)["id"]
+    with patch("app.routers.projects.stop_project", side_effect=DockerError("fail")):
+        r = client.post(f"/projects/{pid}/stop")
+    assert r.status_code == 502
 
 
-def test_update_success(store_dir, tmp_path):
+# ── UPDATE ────────────────────────────────────────────────────────────────────
+
+
+def test_update_success(store_dir):
     client = TestClient(_app(store_dir))
-    pid = client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3000,
-    }).json()["id"]
-
+    pid = _create_project(client)["id"]
     with patch("app.routers.projects.pull_repo"), \
          patch("app.routers.projects.stop_project"), \
          patch("app.routers.projects.deploy_project"):
-        resp = client.post(f"/projects/{pid}/update")
-
-    assert resp.status_code == 200
-    assert resp.json()["updated_at"] is not None
+        r = client.post(f"/projects/{pid}/update")
+    assert r.status_code == 200
+    assert r.json()["updated_at"] is not None
 
 
 def test_update_not_found(store_dir):
@@ -157,56 +187,30 @@ def test_update_not_found(store_dir):
 
 
 def test_update_git_pull_fail(store_dir):
+    from app.services.docker_service import DockerError
     client = TestClient(_app(store_dir), raise_server_exceptions=False)
-    pid = client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3000,
-    }).json()["id"]
-
+    pid = _create_project(client)["id"]
     with patch("app.routers.projects.pull_repo", side_effect=DockerError("git pull failed")):
-        resp = client.post(f"/projects/{pid}/update")
-
-    assert resp.status_code == 502
-    assert "git pull" in resp.json()["detail"]
-
-
-def test_update_docker_fail(store_dir):
-    client = TestClient(_app(store_dir), raise_server_exceptions=False)
-    pid = client.post("/projects", json={
-        "name": "demo", "repo_url": "https://github.com/x/y",
-        "subdomain": "demo", "port": 3000,
-    }).json()["id"]
-
-    with patch("app.routers.projects.pull_repo"), \
-         patch("app.routers.projects.stop_project", side_effect=DockerError("daemon down")):
-        resp = client.post(f"/projects/{pid}/update")
-
-    assert resp.status_code == 502
-    assert "daemon down" in resp.json()["detail"]
+        r = client.post(f"/projects/{pid}/update")
+    assert r.status_code == 502
+    assert "git pull" in r.json()["detail"]
 
 
-# --- STATUS ---
+# ── STATUS ────────────────────────────────────────────────────────────────────
 
 
-def test_list_includes_status(store_dir):
+def test_list_includes_db_status(store_dir):
     client = TestClient(_app(store_dir))
-    client.post("/projects", json={
-        "name": "my-app", "repo_url": "https://github.com/x/y",
-        "subdomain": "my-app", "port": 3001,
-    })
+    _create_project(client)
+    resp = client.get("/projects")
+    assert resp.json()[0]["status"] == "pending"
+
+
+def test_list_detects_crashed_container(store_dir):
+    from app.services.project_store import update_project_status
+    client = TestClient(_app(store_dir))
+    p = _create_project(client)
+    update_project_status(store_dir + "/projects.db", p["id"], ProjectStatus.running)
     with patch("app.routers.projects.project_status", return_value="stopped"):
         resp = client.get("/projects")
-    for project in resp.json():
-        assert project["status"] in ("running", "stopped")
-
-
-def test_list_docker_unavailable(store_dir):
-    client = TestClient(_app(store_dir))
-    client.post("/projects", json={
-        "name": "my-app", "repo_url": "https://github.com/x/y",
-        "subdomain": "my-app", "port": 3001,
-    })
-    with patch("app.routers.projects.project_status", side_effect=DockerError("daemon down")):
-        resp = client.get("/projects")
-    for project in resp.json():
-        assert project["status"] == "stopped"
+    assert resp.json()[0]["status"] == "stopped"
