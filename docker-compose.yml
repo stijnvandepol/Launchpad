@@ -24,6 +24,7 @@ services:
     command: tunnel --config /etc/cloudflared/config.yaml run
     volumes:
       - /etc/cloudflared:/etc/cloudflared:ro
+      - /root/.cloudflared:/root/.cloudflared:ro
 
 volumes:
   demos:
