@@ -21,6 +21,7 @@ export interface CreateProjectPayload {
   name: string
   repo_url: string
   subdomain: string
+  github_pat?: string
 }
 
 export const projectsApi = {
@@ -29,7 +30,7 @@ export const projectsApi = {
   clone:   (id: string) => apiClient.post<Project>(`/projects/${id}/clone`),
   deploy:  (id: string) => apiClient.post<Project>(`/projects/${id}/deploy`),
   restart: (id: string) => apiClient.post<Project>(`/projects/${id}/restart`),
-  update:  (id: string) => apiClient.post<Project>(`/projects/${id}/update`),
+  pull:    (id: string) => apiClient.post<Project>(`/projects/${id}/pull`),
   stop:    (id: string) => apiClient.post<Project>(`/projects/${id}/stop`),
   remove:  (id: string) => apiClient.delete(`/projects/${id}`),
 }

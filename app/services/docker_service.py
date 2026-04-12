@@ -123,6 +123,13 @@ def stop_project(path: str) -> None:
     _run(["docker", "compose", "down"], cwd=path, env=None)
 
 
+def teardown_project(path: str) -> None:
+    """Stop containers and remove images. Used for pull (update code) and delete."""
+    if not Path(path).exists():
+        return
+    _run(["docker", "compose", "down", "--rmi", "all", "--remove-orphans"], cwd=path, env=None)
+
+
 def project_status(path: str) -> str:
     if not Path(path).exists():
         return "stopped"

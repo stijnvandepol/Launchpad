@@ -181,12 +181,12 @@ def test_update_success(store_dir):
     assert r.json()["updated_at"] is not None
 
 
-def test_update_not_found(store_dir):
+def test_pull_not_found(store_dir):
     client = TestClient(_app(store_dir), raise_server_exceptions=False)
-    assert client.post("/projects/nonexistent/update").status_code == 404
+    assert client.post("/projects/nonexistent/pull").status_code == 404
 
 
-def test_update_git_pull_fail(store_dir):
+def test_pull_git_fail(store_dir):
     from app.services.docker_service import DockerError
     client = TestClient(_app(store_dir), raise_server_exceptions=False)
     pid = _create_project(client)["id"]

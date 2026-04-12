@@ -16,7 +16,7 @@ from app.services.project_store import (
 from app.services.log_service import append_log, get_logs, get_logs_after
 from app.services.docker_service import (
     _run_streaming, validate_repo, write_compose_override, strip_host_ports,
-    deploy_project, stop_project, project_status, pull_repo, DockerError,
+    deploy_project, stop_project, teardown_project, project_status, pull_repo, DockerError,
 )
 from app.services.cloudflare_service import add_ingress, remove_ingress
 
@@ -128,6 +128,7 @@ def create_project(
         repo_url=body.repo_url,
         subdomain=body.subdomain,
         path=f"{settings.BASE_DIR}/{body.subdomain}",
+        github_pat=body.github_pat,
         port=next_port(store),
     )
     upsert_project(store, project)
@@ -149,7 +150,7 @@ def clone_project_endpoint(
             detail=f"Cannot clone from status '{project.status.value}'",
         )
     background_tasks.add_task(
-        _do_clone, project.id, project.repo_url, project.path, store,
+        _do_clone, project.id, project.repo_url, project.path, store, project.github_pat,
     )
     return _to_response(project, ProjectStatus.cloning)
 
@@ -206,7 +207,7 @@ def restart_project_endpoint(
     store = _store_path(settings)
     project = _get_or_404(store, project_id)
     try:
-        stop_project(project.path)
+        teardown_project(project.path)
     except DockerError:
         pass
     try:
@@ -251,7 +252,7 @@ def delete_project_endpoint(
     store = _store_path(settings)
     project = _get_or_404(store, project_id)
     try:
-        stop_project(project.path)
+        teardown_project(project.path)
     except DockerError:
         pass
     try:
