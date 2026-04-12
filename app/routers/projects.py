@@ -67,11 +67,10 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
     update_project_status(store, project_id, ProjectStatus.building)
     append_log(store, project_id, f"=== Deploy started (port {port}) ===")
     try:
-        write_compose_override(path)
+        write_compose_override(path, port)
         for line in _run_streaming(
             ["docker", "compose", "up", "-d", "--build"],
             cwd=path,
-            env={"PORT": str(port)},
             timeout=600,
         ):
             append_log(store, project_id, line)

@@ -37,18 +37,20 @@ def test_validate_repo_raises_without_either(tmp_path):
 
 def test_write_compose_override_creates_file(tmp_path):
     from app.services.docker_service import write_compose_override
-    write_compose_override(str(tmp_path))
+    write_compose_override(str(tmp_path), port=9001)
     override = tmp_path / "docker-compose.override.yml"
     assert override.exists()
     content = override.read_text()
     assert "512m" in content
     assert "0.5" in content
+    assert "9001:8080" in content
+    assert "PORT: \"8080\"" in content
 
 
 def test_write_compose_override_is_idempotent(tmp_path):
     from app.services.docker_service import write_compose_override
-    write_compose_override(str(tmp_path))
-    write_compose_override(str(tmp_path))
+    write_compose_override(str(tmp_path), port=9001)
+    write_compose_override(str(tmp_path), port=9001)
     content = (tmp_path / "docker-compose.override.yml").read_text()
     assert content.count("mem_limit") == 1
 
@@ -56,11 +58,12 @@ def test_write_compose_override_is_idempotent(tmp_path):
 def test_deploy_project_calls_compose_up(tmp_path):
     from app.services.docker_service import deploy_project
     with patch("app.services.docker_service._run") as mock_run:
-        deploy_project(str(tmp_path), port=3001)
+        with patch("app.services.docker_service.write_compose_override") as mock_override:
+            deploy_project(str(tmp_path), port=3001)
+    mock_override.assert_called_once_with(str(tmp_path), 3001)
     mock_run.assert_called_once_with(
         ["docker", "compose", "up", "-d", "--build"],
         cwd=str(tmp_path),
-        env={"PORT": "3001"},
     )
 
 

@@ -7,13 +7,18 @@ from typing import Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
-COMPOSE_OVERRIDE = """\
+def _compose_override(port: int) -> str:
+    return f"""\
 services:
   app:
     mem_limit: 512m
     cpus: "0.5"
     network_mode: bridge
     restart: "no"
+    ports:
+      - "{port}:8080"
+    environment:
+      PORT: "8080"
 """
 
 
@@ -70,9 +75,13 @@ def validate_repo(path: str) -> None:
         raise DockerError("No Dockerfile or docker-compose.yml found in repository root")
 
 
-def write_compose_override(path: str) -> None:
-    """Write resource-limit override. Always regenerated so repo cannot override limits."""
-    (Path(path) / "docker-compose.override.yml").write_text(COMPOSE_OVERRIDE)
+def write_compose_override(path: str, port: int) -> None:
+    """Write resource-limit + port-mapping override. Always regenerated so repo cannot override limits.
+    Maps the unique assigned host port to container port 8080 so apps that hardcode
+    port 8080 work out of the box. PORT=8080 env var is also injected for apps that
+    respect the PORT convention.
+    """
+    (Path(path) / "docker-compose.override.yml").write_text(_compose_override(port))
 
 
 def pull_repo(path: str) -> None:
@@ -80,8 +89,9 @@ def pull_repo(path: str) -> None:
 
 
 def deploy_project(path: str, port: Optional[int] = None) -> None:
-    env = {"PORT": str(port)} if port else None
-    _run(["docker", "compose", "up", "-d", "--build"], cwd=path, env=env)
+    if port:
+        write_compose_override(path, port)
+    _run(["docker", "compose", "up", "-d", "--build"], cwd=path)
 
 
 def stop_project(path: str) -> None:
