@@ -38,24 +38,56 @@
       </div>
     </div>
 
-    <!-- Repo requirements info block -->
+    <!-- Repo check prompt -->
     <div class="card p-4">
       <button
         class="flex items-center gap-2 text-sm font-medium text-gray-700 w-full text-left"
         @click="showRepoInfo = !showRepoInfo"
       >
         <i class="pi pi-info-circle text-blue-500"></i>
-        Vereisten voor je repository
+        Project check prompt
         <i class="pi ml-auto text-gray-400 transition-transform" :class="showRepoInfo ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
       </button>
       <div v-if="showRepoInfo" class="mt-3 text-sm text-gray-600 space-y-2 border-t border-gray-100 pt-3">
-        <p>Zorg dat je repository voldoet aan de volgende vereisten:</p>
-        <ul class="list-disc list-inside space-y-1 text-gray-500">
-          <li>Een werkende <code class="bg-gray-100 px-1 rounded">Dockerfile</code> <strong>of</strong> <code class="bg-gray-100 px-1 rounded">docker-compose.yml</code> in de root</li>
-          <li>De applicatie luistert op de poort die wordt doorgegeven via de <code class="bg-gray-100 px-1 rounded">PORT</code> omgevingsvariabele</li>
-          <li>Optioneel: een <code class="bg-gray-100 px-1 rounded">.env.example</code> bestand voor documentatie</li>
-        </ul>
-        <p class="text-xs text-gray-400">Na het clonen wordt gecontroleerd of de vereiste bestanden aanwezig zijn.</p>
+        <p>Kopieer onderstaande prompt en laat een AI je project checken voordat je het deployt.</p>
+        <div class="relative">
+          <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-700 whitespace-pre-wrap leading-relaxed select-all">Controleer of mijn project klaar is om gedeployed te worden als Docker-container. Controleer de volgende punten:
+
+Containerisatie (verplicht)
+- Er staat een werkende Dockerfile of docker-compose.yml in de root van de repository
+- Bij een docker-compose.yml: er is slechts één service gedefinieerd
+- De build is zelfstandig — alle dependencies worden in de container geïnstalleerd
+
+Poortconfiguratie (verplicht)
+- De applicatie luistert op de poort uit de PORT environment variable
+- Als dat niet mogelijk is: de poort is duidelijk via EXPOSE in de Dockerfile of een ports-mapping in docker-compose.yml
+- De applicatie luistert op één poort
+
+Resources
+- De applicatie draait binnen 512 MB geheugen en 0.5 CPU
+- Geen zware achtergrondprocessen of workers
+
+Routing
+- De app serveert HTTP (geen HTTPS — SSL wordt extern geregeld)
+- Bij een SPA: de server heeft een catch-all route die index.html teruggeeft voor client-side routing
+
+Configuratie
+- Secrets en configuratie via environment variables, niet hardcoded
+- Optioneel: een .env.example met documentatie van benodigde variabelen
+
+Repository
+- Bereikbaar via een publieke HTTPS-URL (of private met token)
+- Geen submodules of externe dependencies die authenticatie vereisen tijdens de build
+
+Analyseer mijn project en geef per punt aan: ✅ voldoet, ⚠️ aandachtspunt, of ❌ ontbreekt/moet aangepast. Geef concrete suggesties voor wat er aangepast moet worden.</pre>
+          <button
+            class="absolute top-2 right-2 btn-secondary text-xs px-2 py-1"
+            title="Kopieer prompt"
+            @click="copyPrompt"
+          >
+            <i class="pi" :class="copied ? 'pi-check text-green-600' : 'pi-copy'"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -255,6 +287,7 @@ const busy = ref<Record<string, string>>({})
 const showNewProject = ref(false)
 const creating = ref(false)
 const showRepoInfo = ref(false)
+const copied = ref(false)
 const showLogDrawer = ref(false)
 const activeLogProject = ref<Project | null>(null)
 
@@ -411,6 +444,14 @@ function openLogs(project: Project) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function copyPrompt() {
+  const pre = document.querySelector('.select-all') as HTMLElement
+  if (!pre) return
+  await navigator.clipboard.writeText(pre.textContent ?? '')
+  copied.value = true
+  setTimeout(() => (copied.value = false), 2000)
+}
 
 function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n) + '…' : s
