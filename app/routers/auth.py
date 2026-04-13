@@ -1,47 +1,99 @@
-# app/routers/auth.py
-import logging
-from fastapi import APIRouter, HTTPException, status, Depends
-from pydantic import BaseModel
-from app.services.accuro_auth import login_via_accuro, verify_accuro_token, AccuroAuthError
-from app.services.jwt_service import sign_token
-from app.config import get_settings, Settings
+"""Auth router — OIDC Authorization Code flow."""
+import uuid
+from datetime import datetime, timedelta, timezone
 
-logger = logging.getLogger(__name__)
+from fastapi import APIRouter, Depends
+from fastapi.responses import RedirectResponse
+from jose import JWTError, jwt
+
+from app.config import get_settings, Settings
+from app.services.oidc_client import OIDCError, build_authorize_url, exchange_code, fetch_jwks, verify_id_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-class LoginRequest(BaseModel):
-    email: str
-    password: str
+def _create_state_jwt(settings) -> str:
+    """Create a signed state JWT for CSRF protection."""
+    now = datetime.now(tz=timezone.utc)
+    payload = {
+        "type": "oauth_state",
+        "nonce": str(uuid.uuid4()),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=10)).timestamp()),
+    }
+    return jwt.encode(payload, settings.LAUNCHPAD_JWT_SECRET, algorithm="HS256")
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-@router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, settings: Settings = Depends(get_settings)):
+def _verify_state_jwt(token: str, settings) -> bool:
+    """Verify the state JWT. Returns False if invalid."""
     try:
-        accuro_token = await login_via_accuro(body.email, body.password, settings.ACCURO_URL)
-        user = await verify_accuro_token(accuro_token, settings.ACCURO_URL)
-    except AccuroAuthError as exc:
-        logger.error("Accuro auth failed for %s: %s", body.email, exc)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        claims = jwt.decode(token, settings.LAUNCHPAD_JWT_SECRET, algorithms=["HS256"])
+        return claims.get("type") == "oauth_state"
+    except JWTError:
+        return False
 
-    if user.role.upper() not in settings.allowed_roles:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Role not permitted")
 
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
+_SESSION_TOKEN_EXPIRY_SECONDS = 8 * 3600  # 8 hours
 
-    token = sign_token(
-        {"sub": user.id, "email": user.email, "name": user.name, "role": user.role},
-        settings.LAUNCHPAD_JWT_SECRET,
-    )
-    return TokenResponse(access_token=token)
+
+def _issue_session_token(claims: dict, settings) -> str:
+    """Issue a Launchpad session JWT from OIDC claims."""
+    now = int(datetime.now(tz=timezone.utc).timestamp())
+    payload = {
+        "sub": claims["sub"],
+        "email": claims["email"],
+        "name": claims.get("name", ""),
+        "role": claims.get("role", ""),
+        "iat": now,
+        "exp": now + _SESSION_TOKEN_EXPIRY_SECONDS,
+    }
+    return jwt.encode(payload, settings.LAUNCHPAD_JWT_SECRET, algorithm="HS256")
+
+
+@router.get("/login")
+async def login(settings: Settings = Depends(get_settings)):
+    """Start OIDC flow — redirect to Accuro authorize endpoint."""
+    state = _create_state_jwt(settings)
+    authorize_url = build_authorize_url(settings, state)
+    return RedirectResponse(authorize_url, status_code=302)
+
+
+@router.get("/callback")
+async def callback(
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    settings: Settings = Depends(get_settings),
+):
+    """OIDC callback — exchange code for tokens, issue Launchpad JWT."""
+    frontend_error_url = f"{settings.LAUNCHPAD_BASE_URL}/login?error=auth_failed"
+
+    if error:
+        return RedirectResponse(frontend_error_url, status_code=302)
+
+    if not code or not state:
+        return RedirectResponse(frontend_error_url, status_code=302)
+
+    # Verify state JWT (CSRF check)
+    if not _verify_state_jwt(state, settings):
+        return RedirectResponse(frontend_error_url, status_code=302)
+
+    try:
+        redirect_uri = f"{settings.LAUNCHPAD_BASE_URL}/auth/callback"
+        token_response = await exchange_code(settings, code, redirect_uri)
+        id_token = token_response.get("id_token")
+        if not id_token:
+            return RedirectResponse(frontend_error_url, status_code=302)
+
+        # Verify ID token
+        jwks = await fetch_jwks(settings)
+        claims = verify_id_token(id_token, jwks, settings.ACCURO_CLIENT_ID, settings.ACCURO_URL)
+
+        # Issue Launchpad session JWT
+        launchpad_token = _issue_session_token(claims, settings)
+
+        frontend_callback_url = f"{settings.LAUNCHPAD_BASE_URL}/callback?token={launchpad_token}"
+        return RedirectResponse(frontend_callback_url, status_code=302)
+
+    except (OIDCError, Exception):
+        return RedirectResponse(frontend_error_url, status_code=302)
