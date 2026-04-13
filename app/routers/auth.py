@@ -95,5 +95,9 @@ async def callback(
         frontend_callback_url = f"{settings.LAUNCHPAD_BASE_URL}/callback?token={launchpad_token}"
         return RedirectResponse(frontend_callback_url, status_code=302)
 
-    except (OIDCError, Exception):
+    except OIDCError:
+        return RedirectResponse(frontend_error_url, status_code=302)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Unexpected error in OIDC callback")
         return RedirectResponse(frontend_error_url, status_code=302)
