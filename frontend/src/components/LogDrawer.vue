@@ -42,6 +42,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import { useProjectLogs } from '@/composables/useProjectLogs'
+import { S } from '@/api/projects'
 
 const props = defineProps<{
   visible: boolean
@@ -55,7 +56,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const logContainer = ref<HTMLElement | null>(null)
 const { logs, streaming, start, close } = useProjectLogs(props.projectId)
 
-const ACTIVE_STATUSES = ['cloning', 'building', 'pending']
+const ACTIVE_STATUSES = [S.CLONING, S.BUILDING, S.PENDING]
 
 watch(() => props.visible, (val) => {
   if (val) start()

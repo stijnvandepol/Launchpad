@@ -91,7 +91,7 @@
             <!-- Naam -->
             <td class="px-4 py-3" @click.stop>
               <a
-                v-if="project.status === 'running'"
+                v-if="project.status === S.RUNNING"
                 :href="`https://${project.subdomain}.webvakwerk.nl`"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -121,7 +121,7 @@
               <div class="flex items-center gap-1 justify-end">
                 <!-- Clone (pending, failed) -->
                 <button
-                  v-if="project.status === 'pending' || project.status === 'failed'"
+                  v-if="project.status === S.PENDING || project.status === S.FAILED"
                   class="btn-secondary text-xs px-2 py-1"
                   :disabled="!!busy[project.id]"
                   title="Clone repository"
@@ -133,7 +133,7 @@
 
                 <!-- Deploy (cloned, stopped, failed) -->
                 <button
-                  v-if="project.status === 'cloned' || project.status === 'stopped' || project.status === 'failed'"
+                  v-if="project.status === S.CLONED || project.status === S.STOPPED || project.status === S.FAILED"
                   class="btn-primary text-xs px-2 py-1"
                   :disabled="!!busy[project.id]"
                   title="Deploy"
@@ -144,7 +144,7 @@
                 </button>
 
                 <!-- Update + Restart (running) -->
-                <template v-if="project.status === 'running'">
+                <template v-if="project.status === S.RUNNING">
                   <button
                     class="btn-secondary text-xs px-2 py-1"
                     :disabled="!!busy[project.id]"
@@ -176,7 +176,7 @@
 
                 <!-- Delete (stopped, failed, cloned) -->
                 <button
-                  v-if="['stopped', 'failed', 'cloned', 'pending'].includes(project.status)"
+                  v-if="[S.STOPPED, S.FAILED, S.CLONED, S.PENDING].includes(project.status)"
                   class="btn-icon"
                   :disabled="!!busy[project.id]"
                   title="Verwijder"
@@ -236,7 +236,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import Dialog from 'primevue/dialog'
 import StatusBadge from '@/components/StatusBadge.vue'
 import LogDrawer from '@/components/LogDrawer.vue'
-import { projectsApi, type Project } from '@/api/projects'
+import { projectsApi, S, type Project } from '@/api/projects'
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -253,10 +253,10 @@ const activeLogProject = ref<Project | null>(null)
 
 const form = ref({ name: '', repo_url: '', subdomain: '' })
 
-const runningCount = computed(() => projects.value.filter(p => p.status === 'running').length)
-const runningProjects = computed(() => projects.value.filter(p => p.status === 'running'))
+const runningCount = computed(() => projects.value.filter(p => p.status === S.RUNNING).length)
+const runningProjects = computed(() => projects.value.filter(p => p.status === S.RUNNING))
 const hasActiveJobs = computed(() =>
-  projects.value.some(p => p.status === 'cloning' || p.status === 'building')
+  projects.value.some(p => p.status === S.CLONING || p.status === S.BUILDING)
 )
 
 // ── Polling ───────────────────────────────────────────────────────────────────

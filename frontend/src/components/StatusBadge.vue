@@ -19,27 +19,27 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ProjectStatus } from '@/api/projects'
+import { S, type ProjectStatus } from '@/api/projects'
 
 const props = defineProps<{ status: ProjectStatus }>()
 
 const spinning = computed(() =>
-  props.status === 'cloning' || props.status === 'building'
+  props.status === S.CLONING || props.status === S.BUILDING
 )
 
 const badgeClass = computed(() => ({
-  'bg-gray-100 text-gray-500':    props.status === 'pending' || props.status === 'stopped',
-  'bg-blue-50 text-blue-700':     props.status === 'cloning' || props.status === 'building',
-  'bg-yellow-50 text-yellow-700': props.status === 'cloned',
-  'bg-green-50 text-green-700':   props.status === 'running',
-  'bg-red-50 text-red-700':       props.status === 'failed',
+  'bg-gray-100 text-gray-500':    props.status === S.PENDING || props.status === S.STOPPED,
+  'bg-blue-50 text-blue-700':     props.status === S.CLONING || props.status === S.BUILDING,
+  'bg-yellow-50 text-yellow-700': props.status === S.CLONED,
+  'bg-green-50 text-green-700':   props.status === S.RUNNING,
+  'bg-red-50 text-red-700':       props.status === S.FAILED,
 }))
 
 const dotClass = computed(() => ({
-  'bg-gray-400':   props.status === 'pending' || props.status === 'stopped',
-  'bg-blue-500':   props.status === 'cloning' || props.status === 'building',
-  'bg-yellow-500': props.status === 'cloned',
-  'bg-green-500':  props.status === 'running',
-  'bg-red-500':    props.status === 'failed',
+  'bg-gray-400':   props.status === S.PENDING || props.status === S.STOPPED,
+  'bg-blue-500':   props.status === S.CLONING || props.status === S.BUILDING,
+  'bg-yellow-500': props.status === S.CLONED,
+  'bg-green-500':  props.status === S.RUNNING,
+  'bg-red-500':    props.status === S.FAILED,
 }))
 </script>

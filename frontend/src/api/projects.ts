@@ -1,8 +1,16 @@
 import { apiClient } from './client'
 
-export type ProjectStatus =
-  | 'pending' | 'cloning' | 'cloned'
-  | 'building' | 'running' | 'failed' | 'stopped'
+export const S = {
+  PENDING:  'pending',
+  CLONING:  'cloning',
+  CLONED:   'cloned',
+  BUILDING: 'building',
+  RUNNING:  'running',
+  FAILED:   'failed',
+  STOPPED:  'stopped',
+} as const
+
+export type ProjectStatus = typeof S[keyof typeof S]
 
 export interface Project {
   id: string
