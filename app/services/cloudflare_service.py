@@ -34,7 +34,10 @@ def _get_ingress(account_id: str, tunnel_id: str, api_token: str) -> list[dict]:
         ) from e
     except httpx.RequestError as e:
         raise CloudflareAPIError(f"GET configurations request error: {e}") from e
-    return r.json().get("result", {}).get("config", {}).get("ingress", [])
+    data = r.json()
+    result = data.get("result") or {}
+    config = result.get("config") or {}
+    return config.get("ingress") or []
 
 
 def _put_ingress(account_id: str, tunnel_id: str, api_token: str, ingress: list[dict]) -> None:
