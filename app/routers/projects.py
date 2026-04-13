@@ -85,8 +85,18 @@ def _do_clone(project_id: str, repo_url: str, path: str, store: str, github_pat:
         if os.path.exists(path):
             shutil.rmtree(path)
         clone_url = repo_url.replace("https://", f"https://{github_pat}@", 1) if github_pat else repo_url
-        for line in _run_streaming(["git", "clone", clone_url, path], timeout=120):
-            append_log(store, project_id, _sanitize_log(line, github_pat))
+        try:
+            for line in _run_streaming(["git", "clone", clone_url, path], timeout=120):
+                append_log(store, project_id, _sanitize_log(line, github_pat))
+        except DockerError:
+            if not github_pat:
+                raise
+            # PAT failed — retry without (works for public repos)
+            append_log(store, project_id, "Auth failed, retrying without token...")
+            if os.path.exists(path):
+                shutil.rmtree(path)
+            for line in _run_streaming(["git", "clone", repo_url, path], timeout=120):
+                append_log(store, project_id, line)
         validate_repo(path)
         append_log(store, project_id, "=== Clone complete ===")
         update_project_status(store, project_id, ProjectStatus.cloned)
