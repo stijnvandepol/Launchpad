@@ -1,3 +1,12 @@
+# Stage 1 — build Vue frontend
+FROM node:20-slim AS frontend-build
+WORKDIR /frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2 — Python backend
 FROM python:3.12-slim
 
 RUN apt-get update && \
@@ -15,6 +24,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
-COPY frontend/dist ./frontend/dist
+COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000"]
