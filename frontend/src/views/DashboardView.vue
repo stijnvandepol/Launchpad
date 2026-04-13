@@ -145,7 +145,7 @@ Analyseer mijn project en geef per punt aan: ✅ voldoet, ⚠️ aandachtspunt, 
             <!-- Deployed -->
             <td class="px-4 py-3">
               <span class="text-sm text-gray-500" :title="project.deployed_at ?? ''">
-                {{ relativeTime(project.deployed_at) }}
+                {{ formatDate(project.deployed_at) }}
               </span>
             </td>
             <!-- Acties -->
@@ -457,14 +457,9 @@ function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n) + '…' : s
 }
 
-function relativeTime(iso: string | null): string {
+function formatDate(iso: string | null): string {
   if (!iso) return '—'
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'zojuist'
-  if (mins < 60) return `${mins}m geleden`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}u geleden`
-  return `${Math.floor(hours / 24)}d geleden`
+  const d = new Date(iso)
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 </script>
