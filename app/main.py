@@ -51,4 +51,10 @@ def health():
 # Serve Vue SPA — must be last (catch-all)
 _dist = Path(__file__).parent.parent / "frontend" / "dist"
 if _dist.exists():
-    app.mount("/", StaticFiles(directory=str(_dist), html=True), name="frontend")
+    app.mount("/assets", StaticFiles(directory=str(_dist / "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        from fastapi.responses import FileResponse
+        index = _dist / "index.html"
+        return FileResponse(str(index))
