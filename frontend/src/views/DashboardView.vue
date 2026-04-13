@@ -206,6 +206,13 @@
           <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Subdomain</label>
           <input v-model="form.subdomain" class="input" placeholder="mijn-app" pattern="[a-z0-9][a-z0-9\-]{0,46}[a-z0-9]" required />
         </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">
+            Container poort
+            <span class="text-gray-400 normal-case font-normal ml-1">(optioneel — wordt automatisch gedetecteerd)</span>
+          </label>
+          <input v-model.number="form.container_port" class="input" type="number" min="1" max="65535" placeholder="80 of 3000 etc." />
+        </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" class="btn-secondary" @click="showNewProject = false">Annuleren</button>
           <button type="submit" class="btn-primary" :disabled="creating">
@@ -251,7 +258,7 @@ const showRepoInfo = ref(false)
 const showLogDrawer = ref(false)
 const activeLogProject = ref<Project | null>(null)
 
-const form = ref({ name: '', repo_url: '', subdomain: '' })
+const form = ref<{ name: string; repo_url: string; subdomain: string; container_port: number | null }>({ name: '', repo_url: '', subdomain: '', container_port: null })
 
 const runningCount = computed(() => projects.value.filter(p => p.status === S.RUNNING).length)
 const runningProjects = computed(() => projects.value.filter(p => p.status === S.RUNNING))
@@ -377,10 +384,12 @@ function confirmDelete(project: Project) {
 async function createProject() {
   creating.value = true
   try {
-    const { data } = await projectsApi.create(form.value)
+    const payload = { ...form.value }
+    if (!payload.container_port) delete (payload as any).container_port
+    const { data } = await projectsApi.create(payload)
     projects.value.push(data)
     showNewProject.value = false
-    form.value = { name: '', repo_url: '', subdomain: '' }
+    form.value = { name: '', repo_url: '', subdomain: '', container_port: null }
     toast.add({ severity: 'success', summary: 'Aangemaakt', detail: data.name, life: 3000 })
   } catch (e: any) {
     toast.add({

@@ -17,7 +17,7 @@ from app.services.log_service import append_log, get_logs, get_logs_after
 from app.services.docker_service import (
     _run_streaming, validate_repo, write_compose_override, strip_host_ports,
     deploy_project, stop_project, teardown_project, project_status, pull_repo, DockerError,
-    CONTAINER_DEFAULT_PORT,
+    CONTAINER_DEFAULT_PORT, detect_container_port,
 )
 from app.services.cloudflare_service import add_ingress, remove_ingress, CloudflareAPIError
 
@@ -85,6 +85,13 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
         strip_host_ports(path)
         p_pre = get_project(store, project_id)
         container_port = p_pre.container_port if p_pre else CONTAINER_DEFAULT_PORT
+        # Auto-detect from repo files when still at the default — handles apps that
+        # expose a non-8080 port (e.g. nginx on 80) without requiring manual input.
+        if container_port == CONTAINER_DEFAULT_PORT:
+            detected = detect_container_port(path)
+            if detected != CONTAINER_DEFAULT_PORT:
+                container_port = detected
+                logger.info("auto-detected container port %d for project %s", container_port, project_id)
         write_compose_override(path, port, container_port)
         for line in _run_streaming(
             ["docker", "compose", "up", "-d", "--build"],

@@ -12,10 +12,10 @@ CONTAINER_CPU_LIMIT = "0.5"
 CONTAINER_DEFAULT_PORT = 8080
 
 
-def _compose_override(port: int, container_port: int = CONTAINER_DEFAULT_PORT) -> str:
+def _compose_override(port: int, container_port: int = CONTAINER_DEFAULT_PORT, service_name: str = "app") -> str:
     return f"""\
 services:
-  app:
+  {service_name}:
     build: .
     mem_limit: {CONTAINER_MEMORY_LIMIT}
     cpus: "{CONTAINER_CPU_LIMIT}"
@@ -26,6 +26,57 @@ services:
     environment:
       PORT: "{container_port}"
 """
+
+
+def detect_service_name(path: str) -> str:
+    """Return the first service name from docker-compose.yml, or 'app' if absent/unreadable."""
+    compose_file = Path(path) / "docker-compose.yml"
+    if not compose_file.exists():
+        return "app"
+    try:
+        from ruamel.yaml import YAML
+        yaml = YAML()
+        with open(compose_file) as f:
+            data = yaml.load(f)
+        services = (data or {}).get("services") or {}
+        if services:
+            return next(iter(services))
+    except Exception:
+        pass
+    return "app"
+
+
+def detect_container_port(path: str) -> int:
+    """Detect the container's listen port from docker-compose.yml ports mapping or Dockerfile EXPOSE.
+
+    Checks docker-compose.yml first (right-hand side of 'host:container' mapping),
+    then falls back to the first EXPOSE directive in the Dockerfile.
+    Returns CONTAINER_DEFAULT_PORT if nothing is found.
+    """
+    compose_file = Path(path) / "docker-compose.yml"
+    if compose_file.exists():
+        try:
+            from ruamel.yaml import YAML
+            yaml = YAML()
+            with open(compose_file) as f:
+                data = yaml.load(f)
+            for service in ((data or {}).get("services") or {}).values():
+                for p in (service or {}).get("ports") or []:
+                    s = str(p).split("/")[0]  # strip /tcp, /udp
+                    container_port = int(s.split(":")[-1]) if ":" in s else int(s)
+                    return container_port
+        except Exception:
+            pass
+    dockerfile = Path(path) / "Dockerfile"
+    if dockerfile.exists():
+        try:
+            for line in dockerfile.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.upper().startswith("EXPOSE "):
+                    return int(stripped.split()[1].split("/")[0])
+        except Exception:
+            pass
+    return CONTAINER_DEFAULT_PORT
 
 
 class DockerError(Exception):
@@ -110,8 +161,12 @@ def write_compose_override(path: str, port: int, container_port: int = 8080) -> 
     """Write resource-limit + port-mapping override. Always regenerated so repo cannot override limits.
     Maps the unique assigned host port to the configured container port. PORT env var is also
     injected so apps that respect the PORT convention pick up the right value.
+    Service name is auto-detected from docker-compose.yml so the override merges correctly.
     """
-    (Path(path) / "docker-compose.override.yml").write_text(_compose_override(port, container_port))
+    service_name = detect_service_name(path)
+    (Path(path) / "docker-compose.override.yml").write_text(
+        _compose_override(port, container_port, service_name)
+    )
 
 
 def pull_repo(path: str) -> None:
