@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as loginApi } from '@/api/auth'
 import { setToken } from '@/api/client'
 import { apiClient } from '@/api/client'
 import router from '@/router'
@@ -43,12 +42,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   )
 
-  async function login(email: string, password: string) {
-    const { data } = await loginApi(email, password)
-    token.value = data.access_token
-    localStorage.setItem('token', data.access_token)
-    setToken(data.access_token)
-    user.value = decodeJwt(data.access_token)
+  function handleCallback(newToken: string) {
+    token.value = newToken
+    localStorage.setItem('token', newToken)
+    setToken(newToken)
+    user.value = decodeJwt(newToken)
   }
 
   function logout() {
@@ -59,5 +57,5 @@ export const useAuthStore = defineStore('auth', () => {
     router.push('/login')
   }
 
-  return { token, user, isAuthenticated, login, logout }
+  return { token, user, isAuthenticated, handleCallback, logout }
 })
