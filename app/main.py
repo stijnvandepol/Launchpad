@@ -6,9 +6,29 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from app.routers import auth, projects
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
 
 app = FastAPI(title="Launchpad", version="2.0.0")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc):
+    import traceback
+    from fastapi.responses import JSONResponse
+    logger = logging.getLogger("launchpad.unhandled")
+    logger.error(
+        "Unhandled exception on %s %s: %s\n%s",
+        request.method, request.url.path,
+        exc, traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"},
+    )
 
 app.include_router(auth.router)
 app.include_router(projects.router)

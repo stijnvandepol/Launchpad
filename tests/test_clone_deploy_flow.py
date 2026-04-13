@@ -87,6 +87,7 @@ def test_do_deploy_sets_running_status(store, project, tmp_path):
 
     settings = Settings(
         ACCURO_URL="http://x", LAUNCHPAD_JWT_SECRET="a" * 32, TUNNEL_UUID="t",
+        CF_ACCOUNT_ID="fake-account", CF_API_TOKEN="fake-token",
         BASE_DIR=str(tmp_path),
     )
 
@@ -109,6 +110,7 @@ def test_do_deploy_sets_failed_on_docker_error(store, project, tmp_path):
 
     settings = Settings(
         ACCURO_URL="http://x", LAUNCHPAD_JWT_SECRET="a" * 32, TUNNEL_UUID="t",
+        CF_ACCOUNT_ID="fake-account", CF_API_TOKEN="fake-token",
         BASE_DIR=str(tmp_path),
     )
 

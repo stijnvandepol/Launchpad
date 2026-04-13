@@ -62,9 +62,9 @@
     <!-- Table -->
     <div class="card overflow-hidden">
       <div v-if="loading" class="p-8 text-center text-gray-400 text-sm">Laden…</div>
-      <div v-else-if="fetchError" class="p-8 text-center text-red-400 text-sm">
+      <div v-else-if="fetchError" class="p-8 text-center text-red-400 text-sm font-mono">
         <i class="pi pi-exclamation-circle mr-2"></i>
-        Projecten laden mislukt — ververs de pagina.
+        GET /projects failed: {{ fetchError }}
       </div>
       <table v-else class="w-full light-table">
         <thead>
@@ -243,7 +243,7 @@ const confirm = useConfirm()
 
 const projects = ref<Project[]>([])
 const loading = ref(true)
-const fetchError = ref(false)
+const fetchError = ref<string | null>(null)
 const busy = ref<Record<string, string>>({})
 const showNewProject = ref(false)
 const creating = ref(false)
@@ -285,15 +285,21 @@ onUnmounted(stopPolling)
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
+function _errorDetail(e: any): string {
+  const status = e?.response?.status
+  const detail = e?.response?.data?.detail ?? e?.message ?? 'unknown error'
+  return status ? `HTTP ${status}: ${detail}` : detail
+}
+
 async function fetchProjects() {
   try {
     const { data } = await projectsApi.list()
     projects.value = data
-    fetchError.value = false
+    fetchError.value = null
     if (hasActiveJobs.value) startPolling()
     else stopPolling()
-  } catch {
-    fetchError.value = true
+  } catch (e: any) {
+    fetchError.value = _errorDetail(e)
   }
 }
 
@@ -325,7 +331,7 @@ async function action(project: Project, type: 'clone' | 'deploy' | 'pull' | 'sto
     toast.add({
       severity: 'error',
       summary: 'Fout',
-      detail: e?.response?.data?.detail ?? 'Actie mislukt',
+      detail: _errorDetail(e),
       life: 4000,
     })
   } finally {
@@ -358,7 +364,7 @@ function confirmDelete(project: Project) {
         toast.add({
           severity: 'error',
           summary: 'Fout',
-          detail: e?.response?.data?.detail ?? 'Verwijderen mislukt',
+          detail: _errorDetail(e),
           life: 4000,
         })
       } finally {
@@ -380,7 +386,7 @@ async function createProject() {
     toast.add({
       severity: 'error',
       summary: 'Fout',
-      detail: e?.response?.data?.detail ?? 'Aanmaken mislukt',
+      detail: _errorDetail(e),
       life: 4000,
     })
   } finally {

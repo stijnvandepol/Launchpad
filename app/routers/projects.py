@@ -17,8 +17,9 @@ from app.services.log_service import append_log, get_logs, get_logs_after
 from app.services.docker_service import (
     _run_streaming, validate_repo, write_compose_override, strip_host_ports,
     deploy_project, stop_project, teardown_project, project_status, pull_repo, DockerError,
+    CONTAINER_DEFAULT_PORT,
 )
-from app.services.cloudflare_service import add_ingress, remove_ingress
+from app.services.cloudflare_service import add_ingress, remove_ingress, CloudflareAPIError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -26,6 +27,19 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 def _store_path(settings: Settings) -> str:
     return f"{settings.BASE_DIR}/projects.db"
+
+
+def _safe_remove_ingress(settings: Settings, subdomain: str) -> None:
+    """Remove ingress rule, logging any failure without raising."""
+    try:
+        remove_ingress(
+            settings.CF_ACCOUNT_ID, settings.TUNNEL_UUID, settings.CF_API_TOKEN,
+            subdomain, settings.BASE_DOMAIN,
+        )
+    except CloudflareAPIError as e:
+        logger.warning("cloudflare: remove_ingress failed for %s: %s", subdomain, e)
+    except Exception as e:
+        logger.warning("cloudflare: unexpected error removing ingress for %s: %s", subdomain, e)
 
 
 def _get_or_404(store: str, project_id: str) -> Project:
@@ -70,7 +84,7 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
     try:
         strip_host_ports(path)
         p_pre = get_project(store, project_id)
-        container_port = p_pre.container_port if p_pre else 8080
+        container_port = p_pre.container_port if p_pre else CONTAINER_DEFAULT_PORT
         write_compose_override(path, port, container_port)
         for line in _run_streaming(
             ["docker", "compose", "up", "-d", "--build"],
@@ -79,10 +93,13 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
         ):
             append_log(store, project_id, line)
         try:
-            add_ingress(settings.CLOUDFLARED_CONFIG, subdomain, settings.BASE_DOMAIN, port, settings.CLOUDFLARED_METRICS_URL)
+            add_ingress(settings.CF_ACCOUNT_ID, settings.TUNNEL_UUID, settings.CF_API_TOKEN, subdomain, settings.BASE_DOMAIN, port)
+        except CloudflareAPIError as e:
+            logger.warning("cloudflare: add_ingress failed for %s: %s", subdomain, e)
+            append_log(store, project_id, f"WARNING: cloudflare ingress failed: {e}")
         except Exception as e:
-            logger.warning("Ingress failed for %s: %s", subdomain, e)
-            append_log(store, project_id, f"Warning: ingress setup failed: {e}")
+            logger.warning("cloudflare: unexpected error adding ingress for %s: %s", subdomain, e)
+            append_log(store, project_id, f"WARNING: cloudflare ingress error: {type(e).__name__}: {e}")
         p = get_project(store, project_id)
         if p:
             p = p.model_copy(update={"deployed_at": datetime.now(timezone.utc)})
@@ -192,10 +209,7 @@ def stop_project_endpoint(
         stop_project(project.path)
     except DockerError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-    try:
-        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, settings.CLOUDFLARED_METRICS_URL)
-    except Exception as e:
-        logger.warning("Remove ingress failed for %s: %s", project.subdomain, e)
+    _safe_remove_ingress(settings, project.subdomain)
     update_project_status(store, project.id, ProjectStatus.stopped)
     return _to_response(get_project(store, project.id))
 
@@ -213,10 +227,7 @@ def restart_project_endpoint(
         teardown_project(project.path)
     except DockerError:
         pass
-    try:
-        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, settings.CLOUDFLARED_METRICS_URL)
-    except Exception:
-        pass
+    _safe_remove_ingress(settings, project.subdomain)
     update_project_status(store, project.id, ProjectStatus.stopped)
     background_tasks.add_task(
         _do_deploy, project.id, project.path, project.port,
@@ -258,10 +269,7 @@ def delete_project_endpoint(
         teardown_project(project.path)
     except DockerError:
         pass
-    try:
-        remove_ingress(settings.CLOUDFLARED_CONFIG, project.subdomain, settings.BASE_DOMAIN, settings.CLOUDFLARED_METRICS_URL)
-    except Exception:
-        pass
+    _safe_remove_ingress(settings, project.subdomain)
     if shutil.os.path.exists(project.path):
         shutil.rmtree(project.path)
     delete_project(store, project_id)

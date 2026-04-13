@@ -47,10 +47,45 @@ uvicorn app.main:app --host 0.0.0.0 --port 3000
 | `ACCURO_ALLOWED_ROLES` | Comma-separated roles that may log in | `admin` |
 | `LAUNCHPAD_JWT_SECRET` | HS256 signing secret (min 32 chars) | — |
 | `TUNNEL_UUID` | UUID of your Cloudflare tunnel | — |
+| `CF_ACCOUNT_ID` | Your Cloudflare account ID | — |
+| `CF_API_TOKEN` | Cloudflare API token with Tunnel Write scope | — |
 | `BASE_DOMAIN` | Domain for subdomains (e.g. `webvakwerk.nl`) | `webvakwerk.nl` |
 | `BASE_DIR` | Root directory where projects are stored | `/demos` |
-| `CLOUDFLARED_CONFIG` | Path to cloudflared `config.yml` | `/cloudflared/config.yml` |
 | `PORT` | Port Launchpad listens on | `3000` |
+
+### Cloudflare API token aanmaken
+
+Launchpad beheert tunnel ingress-regels via de Cloudflare REST API. Je hebt hiervoor een API-token nodig.
+
+**Account ID vinden:**
+
+1. Ga naar [dash.cloudflare.com](https://dash.cloudflare.com) en log in
+2. Klik rechtsonder in de sidebar op je accountnaam
+3. Je **Account ID** staat rechts op de overzichtspagina van je account (onder "API")
+
+**API-token aanmaken:**
+
+1. Ga naar **My Profile → API Tokens** (rechtsboven op je avatar klikken → *My Profile*)
+2. Klik op **Create Token**
+3. Kies **Create Custom Token**
+4. Geef het token een naam, bijv. `Launchpad`
+5. Voeg onder **Permissions** de volgende rechten toe:
+
+   | Resource | Permission |
+   |---|---|
+   | Account → Cloudflare Tunnel | Edit |
+
+6. Stel onder **Account Resources** in: **Include → jouw account**
+7. Klik op **Continue to summary** → **Create Token**
+8. Kopieer het token direct — het wordt maar één keer getoond
+
+Sla de waarden op in `.env`:
+
+```env
+TUNNEL_UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+CF_ACCOUNT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CF_API_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
 
 ## API
 
@@ -129,7 +164,7 @@ pytest -v
 
 1. `POST /projects/{id}/deploy` is called
 2. `deploy_container(subdomain, path, port)` — stops any existing container with the same name, then runs the image (pre-built as `docker build -t {subdomain} {path}`)
-3. `add_ingress(config_path, subdomain, base_domain, port)` — upserts the ingress rule in cloudflared's `config.yml`, keeping the catch-all rule last
+3. `add_ingress(account_id, tunnel_id, api_token, subdomain, base_domain, port)` — fetches the current tunnel config via the Cloudflare API, upserts the ingress rule, and pushes the updated config back (catch-all rule always kept last)
 4. `deployed_at` is set on the project and saved to the store
 
 Stopping reverses steps 2 and 3.

@@ -7,13 +7,18 @@ from typing import Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
-def _compose_override(port: int, container_port: int = 8080) -> str:
+CONTAINER_MEMORY_LIMIT = "512m"
+CONTAINER_CPU_LIMIT = "0.5"
+CONTAINER_DEFAULT_PORT = 8080
+
+
+def _compose_override(port: int, container_port: int = CONTAINER_DEFAULT_PORT) -> str:
     return f"""\
 services:
   app:
     build: .
-    mem_limit: 512m
-    cpus: "0.5"
+    mem_limit: {CONTAINER_MEMORY_LIMIT}
+    cpus: "{CONTAINER_CPU_LIMIT}"
     network_mode: bridge
     restart: "no"
     ports:

@@ -19,6 +19,8 @@ def _app():
             ACCURO_URL=ACCURO_URL,
             LAUNCHPAD_JWT_SECRET=SECRET,
             TUNNEL_UUID="t",
+            CF_ACCOUNT_ID="fake-account",
+            CF_API_TOKEN="fake-token",
         )
 
     app.dependency_overrides[get_settings] = override

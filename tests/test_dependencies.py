@@ -15,7 +15,8 @@ def _make_app():
     app = FastAPI()
 
     def override_settings():
-        return Settings(ACCURO_URL="http://x", LAUNCHPAD_JWT_SECRET=SECRET, TUNNEL_UUID="t")
+        return Settings(ACCURO_URL="http://x", LAUNCHPAD_JWT_SECRET=SECRET, TUNNEL_UUID="t",
+                        CF_ACCOUNT_ID="fake-account", CF_API_TOKEN="fake-token")
 
     app.dependency_overrides[get_settings] = override_settings
 

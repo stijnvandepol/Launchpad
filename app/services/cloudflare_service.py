@@ -1,73 +1,75 @@
 # app/services/cloudflare_service.py
 import logging
-import subprocess
-from pathlib import Path
-from ruamel.yaml import YAML
+import httpx
 
 logger = logging.getLogger(__name__)
 
-_yaml = YAML()
-_yaml.preserve_quotes = True
-
-# Catch-all rule — must always be last in ingress list
+_BASE_URL = "https://api.cloudflare.com/client/v4"
 _CATCH_ALL = {"service": "http_status:404"}
 
-
-def _load(path: Path) -> dict:
-    if not path.exists():
-        raise FileNotFoundError(f"Cloudflared config not found: {path}")
-    data = _yaml.load(path)
-    if data is None:
-        raise ValueError(f"Cloudflared config is empty: {path}")
-    return data
+# Single reused client — connection keep-alive, no per-call TCP overhead
+_client = httpx.Client(timeout=10)
 
 
-def _save(path: Path, data: dict) -> None:
-    with path.open("w") as f:
-        _yaml.dump(data, f)
+class CloudflareAPIError(Exception):
+    """Raised when the Cloudflare API returns a non-2xx response or is unreachable."""
 
 
-def add_ingress(config_path: str, subdomain: str, base_domain: str, port: int, metrics_url: str) -> None:
-    """Add or update an ingress rule, then hot-reload cloudflared."""
-    p = Path(config_path)
-    data = _load(p)
+def _headers(api_token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
+
+
+def _config_url(account_id: str, tunnel_id: str) -> str:
+    return f"{_BASE_URL}/accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations"
+
+
+def _get_ingress(account_id: str, tunnel_id: str, api_token: str) -> list[dict]:
+    url = _config_url(account_id, tunnel_id)
+    try:
+        r = _client.get(url, headers=_headers(api_token))
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise CloudflareAPIError(
+            f"GET configurations HTTP {e.response.status_code}: {e.response.text}"
+        ) from e
+    except httpx.RequestError as e:
+        raise CloudflareAPIError(f"GET configurations request error: {e}") from e
+    return r.json().get("result", {}).get("config", {}).get("ingress", [])
+
+
+def _put_ingress(account_id: str, tunnel_id: str, api_token: str, ingress: list[dict]) -> None:
+    url = _config_url(account_id, tunnel_id)
+    try:
+        r = _client.put(
+            url,
+            headers=_headers(api_token),
+            json={"config": {"ingress": ingress}},
+        )
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise CloudflareAPIError(
+            f"PUT configurations HTTP {e.response.status_code}: {e.response.text}"
+        ) from e
+    except httpx.RequestError as e:
+        raise CloudflareAPIError(f"PUT configurations request error: {e}") from e
+    logger.info("cloudflare: tunnel ingress updated (%d rule(s))", len(ingress))
+
+
+def add_ingress(account_id: str, tunnel_id: str, api_token: str, subdomain: str, base_domain: str, port: int) -> None:
+    """Add or update an ingress rule via the Cloudflare API."""
     hostname = f"{subdomain}.{base_domain}"
     service = f"http://localhost:{port}"
-
-    ingress = data.get("ingress", [])
-    # Keep all named rules except the one we're replacing, and drop catch-all
-    named = [r for r in ingress if r.get("hostname") and r.get("hostname") != hostname]
+    logger.debug("cloudflare: add_ingress %s -> %s", hostname, service)
+    current = _get_ingress(account_id, tunnel_id, api_token)
+    named = [r for r in current if r.get("hostname") and r["hostname"] != hostname]
     named.append({"hostname": hostname, "service": service})
-    data["ingress"] = named + [_CATCH_ALL]
-
-    _save(p, data)
-    _reload_cloudflared(metrics_url)
+    _put_ingress(account_id, tunnel_id, api_token, named + [_CATCH_ALL])
 
 
-def remove_ingress(config_path: str, subdomain: str, base_domain: str, metrics_url: str) -> None:
-    """Remove an ingress rule, then hot-reload cloudflared."""
-    p = Path(config_path)
-    data = _load(p)
+def remove_ingress(account_id: str, tunnel_id: str, api_token: str, subdomain: str, base_domain: str) -> None:
+    """Remove an ingress rule via the Cloudflare API."""
     hostname = f"{subdomain}.{base_domain}"
-
-    ingress = data.get("ingress", [])
-    named = [r for r in ingress if r.get("hostname") and r.get("hostname") != hostname]
-    data["ingress"] = named + [_CATCH_ALL]
-
-    _save(p, data)
-    _reload_cloudflared(metrics_url)
-
-
-def _reload_cloudflared(metrics_url: str) -> None:
-    """Hot-reload cloudflared config via the metrics API (no downtime)."""
-    try:
-        result = subprocess.run(
-            ["curl", "-sf", "-X", "POST", f"{metrics_url}/config/reload"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode == 0:
-            logger.info("Hot-reloaded cloudflared config via %s", metrics_url)
-            return
-        logger.error("Hot-reload failed (exit %s): %s", result.returncode, result.stderr)
-    except Exception as e:
-        logger.error("Hot-reload unavailable at %s: %s", metrics_url, e)
+    logger.debug("cloudflare: remove_ingress %s", hostname)
+    current = _get_ingress(account_id, tunnel_id, api_token)
+    named = [r for r in current if r.get("hostname") and r["hostname"] != hostname]
+    _put_ingress(account_id, tunnel_id, api_token, named + [_CATCH_ALL])

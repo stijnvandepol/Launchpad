@@ -28,8 +28,9 @@ export function useProjectLogs(projectId: string) {
       source = null
     })
     source.onerror = () => {
-      // Connection error or server restart — close source silently without
-      // triggering the drawer's auto-close watcher
+      // Connection dropped or server restarted — surface it in the log stream
+      logs.value.push('[SSE] connection lost — stream closed')
+      streaming.value = false
       source?.close()
       source = null
     }

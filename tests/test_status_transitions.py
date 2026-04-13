@@ -22,6 +22,7 @@ def _app(tmp_dir: str):
     def override_settings():
         return Settings(
             ACCURO_URL="http://x", LAUNCHPAD_JWT_SECRET=SECRET, TUNNEL_UUID="t",
+            CF_ACCOUNT_ID="fake-account", CF_API_TOKEN="fake-token",
             BASE_DIR=tmp_dir,
         )
 

@@ -8,12 +8,12 @@ class Settings(BaseSettings):
     ACCURO_ALLOWED_ROLES: str = "admin"
     LAUNCHPAD_JWT_SECRET: str
     BASE_DIR: str = "/demos"
-    CLOUDFLARED_CONFIG: str = "/cloudflared/config.yml"
     TUNNEL_UUID: str
+    CF_ACCOUNT_ID: str
+    CF_API_TOKEN: str
     BASE_DOMAIN: str = "webvakwerk.nl"
     PORT: int = 3000
     GITHUB_PAT: str | None = None  # optional, for private repos
-    CLOUDFLARED_METRICS_URL: str = "http://host.docker.internal:20241"
 
     @field_validator("LAUNCHPAD_JWT_SECRET")
     @classmethod
