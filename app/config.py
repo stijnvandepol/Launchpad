@@ -5,6 +5,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     ACCURO_URL: str
+    ACCURO_CLIENT_ID: str = ""
+    ACCURO_CLIENT_SECRET: str = ""
+    LAUNCHPAD_BASE_URL: str = ""
     ACCURO_ALLOWED_ROLES: str = "admin"
     LAUNCHPAD_JWT_SECRET: str
     BASE_DIR: str = "/demos"
