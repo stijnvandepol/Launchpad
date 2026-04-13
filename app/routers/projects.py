@@ -1,5 +1,7 @@
 # app/routers/projects.py
 import logging
+import os
+import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -69,15 +71,22 @@ def _to_response(p: Project, live_status: ProjectStatus | None = None) -> Projec
 # ── Background task functions ────────────────────────────────────────────────
 
 
+def _sanitize_log(line: str, github_pat: str | None) -> str:
+    """Remove PAT from log output to prevent credential leakage."""
+    if github_pat:
+        line = line.replace(github_pat, "***")
+    return line
+
+
 def _do_clone(project_id: str, repo_url: str, path: str, store: str, github_pat: str | None = None) -> None:
     update_project_status(store, project_id, ProjectStatus.cloning)
     append_log(store, project_id, f"=== Clone started: {repo_url} ===")
     try:
-        if shutil.os.path.exists(path):
+        if os.path.exists(path):
             shutil.rmtree(path)
         clone_url = repo_url.replace("https://", f"https://{github_pat}@", 1) if github_pat else repo_url
         for line in _run_streaming(["git", "clone", clone_url, path], timeout=120):
-            append_log(store, project_id, line)
+            append_log(store, project_id, _sanitize_log(line, github_pat))
         validate_repo(path)
         append_log(store, project_id, "=== Clone complete ===")
         update_project_status(store, project_id, ProjectStatus.cloned)
@@ -129,6 +138,19 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
             upsert_project(store, p)
         append_log(store, project_id, "=== Deploy complete ===")
         update_project_status(store, project_id, ProjectStatus.running)
+    except DockerError as e:
+        append_log(store, project_id, f"ERROR: {e}")
+        update_project_status(store, project_id, ProjectStatus.failed, str(e))
+
+
+def _do_update(project_id: str, path: str, port: int, subdomain: str, store: str, settings: Settings) -> None:
+    update_project_status(store, project_id, ProjectStatus.building)
+    append_log(store, project_id, "=== Update started (git pull + redeploy) ===")
+    try:
+        for line in _run_streaming(["git", "pull"], cwd=path, timeout=120):
+            append_log(store, project_id, line)
+        teardown_project(path)
+        _do_deploy(project_id, path, port, subdomain, store, settings)
     except DockerError as e:
         append_log(store, project_id, f"ERROR: {e}")
         update_project_status(store, project_id, ProjectStatus.failed, str(e))
@@ -262,22 +284,17 @@ def restart_project_endpoint(
 @router.post("/{project_id}/update", response_model=ProjectResponse)
 def update_project_endpoint(
     project_id: str,
+    background_tasks: BackgroundTasks,
     settings: Settings = Depends(get_settings),
     _: JWTClaims = Depends(require_user),
 ):
     store = _store_path(settings)
     project = _get_or_404(store, project_id)
-    try:
-        pull_repo(project.path)
-        update_project_status(store, project_id, ProjectStatus.stopped)
-        stop_project(project.path)
-        update_project_status(store, project_id, ProjectStatus.building)
-        deploy_project(project.path, project.port)
-    except DockerError as e:
-        update_project_status(store, project_id, ProjectStatus.failed, str(e))
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-    update_project_status(store, project_id, ProjectStatus.running)
-    return _to_response(get_project(store, project_id))
+    background_tasks.add_task(
+        _do_update, project.id, project.path, project.port,
+        project.subdomain, store, settings,
+    )
+    return _to_response(project, ProjectStatus.building)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -293,7 +310,7 @@ def delete_project_endpoint(
     except DockerError:
         pass
     _safe_remove_ingress(settings, project.subdomain)
-    if shutil.os.path.exists(project.path):
+    if os.path.exists(project.path):
         shutil.rmtree(project.path)
     delete_project(store, project_id)
 

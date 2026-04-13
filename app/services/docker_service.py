@@ -194,7 +194,7 @@ def project_status(path: str) -> str:
     if not Path(path).exists():
         return "stopped"
     try:
-        result = _run(["docker", "compose", "ps", "-q"], cwd=path)
+        result = _run(["docker", "compose", "ps", "-q", "--status", "running"], cwd=path)
         return "running" if result.stdout.strip() else "stopped"
     except DockerError:
         return "stopped"

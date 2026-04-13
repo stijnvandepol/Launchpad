@@ -130,6 +130,12 @@ class DeployRequest(BaseModel):
     repo_url:       str
     subdomain:      str
     container_port: int = 8080
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        return _check_name(v)
+
     @field_validator("subdomain")
     @classmethod
     def validate_slug(cls, v: str) -> str:

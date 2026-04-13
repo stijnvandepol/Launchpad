@@ -1,6 +1,7 @@
 """OIDC client service for Launchpad."""
 import time
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from jose import JWTError, jwt
@@ -19,15 +20,14 @@ _JWKS_TTL = 3600  # 1 hour
 
 def build_authorize_url(settings: Settings, state: str) -> str:
     """Build the Accuro OIDC authorization URL."""
-    redirect_uri = f"{settings.LAUNCHPAD_BASE_URL}/auth/callback"
-    return (
-        f"{settings.ACCURO_URL}/oauth/authorize"
-        f"?client_id={settings.ACCURO_CLIENT_ID}"
-        f"&redirect_uri={redirect_uri}"
-        f"&scope=openid+profile"
-        f"&state={state}"
-        f"&response_type=code"
-    )
+    params = urlencode({
+        "client_id": settings.ACCURO_CLIENT_ID,
+        "redirect_uri": f"{settings.LAUNCHPAD_BASE_URL}/auth/callback",
+        "scope": "openid profile",
+        "state": state,
+        "response_type": "code",
+    })
+    return f"{settings.ACCURO_URL}/oauth/authorize?{params}"
 
 
 async def exchange_code(settings: Settings, code: str, redirect_uri: str) -> dict:

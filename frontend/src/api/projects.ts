@@ -37,7 +37,7 @@ export const projectsApi = {
   clone:   (id: string) => apiClient.post<Project>(`/projects/${id}/clone`),
   deploy:  (id: string) => apiClient.post<Project>(`/projects/${id}/deploy`),
   restart: (id: string) => apiClient.post<Project>(`/projects/${id}/restart`),
-  pull:    (id: string) => apiClient.post<Project>(`/projects/${id}/pull`),
+  pull:    (id: string) => apiClient.post<Project>(`/projects/${id}/update`),
   stop:    (id: string) => apiClient.post<Project>(`/projects/${id}/stop`),
   remove:  (id: string) => apiClient.delete(`/projects/${id}`),
 }

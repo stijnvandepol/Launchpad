@@ -27,7 +27,7 @@ async def unhandled_exception_handler(request, exc):
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": f"{type(exc).__name__}: {exc}"},
+        content={"detail": "Internal server error"},
     )
 
 app.include_router(auth.router)
