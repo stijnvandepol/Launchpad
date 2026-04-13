@@ -11,13 +11,6 @@ services:
       - demos:/demos
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/cloudflared:/etc/cloudflared
-    depends_on:
-      - tunnel-launchpad
-
-  tunnel-launchpad:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
 
 
 volumes:
