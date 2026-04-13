@@ -19,7 +19,7 @@ from app.services.docker_service import (
     deploy_project, stop_project, teardown_project, project_status, pull_repo, DockerError,
     CONTAINER_DEFAULT_PORT, detect_container_port,
 )
-from app.services.cloudflare_service import add_ingress, remove_ingress, CloudflareAPIError
+from app.services.cloudflare_service import add_ingress, remove_ingress, create_dns_record, delete_dns_record, CloudflareAPIError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -30,7 +30,7 @@ def _store_path(settings: Settings) -> str:
 
 
 def _safe_remove_ingress(settings: Settings, subdomain: str) -> None:
-    """Remove ingress rule, logging any failure without raising."""
+    """Remove ingress rule and DNS record, logging any failure without raising."""
     try:
         remove_ingress(
             settings.CF_ACCOUNT_ID, settings.TUNNEL_UUID, settings.CF_API_TOKEN,
@@ -40,6 +40,14 @@ def _safe_remove_ingress(settings: Settings, subdomain: str) -> None:
         logger.warning("cloudflare: remove_ingress failed for %s: %s", subdomain, e)
     except Exception as e:
         logger.warning("cloudflare: unexpected error removing ingress for %s: %s", subdomain, e)
+    try:
+        delete_dns_record(
+            settings.CF_ZONE_ID, subdomain, settings.BASE_DOMAIN, settings.CF_API_TOKEN,
+        )
+    except CloudflareAPIError as e:
+        logger.warning("cloudflare: delete_dns_record failed for %s: %s", subdomain, e)
+    except Exception as e:
+        logger.warning("cloudflare: unexpected error deleting DNS for %s: %s", subdomain, e)
 
 
 def _get_or_404(store: str, project_id: str) -> Project:
@@ -107,6 +115,14 @@ def _do_deploy(project_id: str, path: str, port: int, subdomain: str, store: str
         except Exception as e:
             logger.warning("cloudflare: unexpected error adding ingress for %s: %s", subdomain, e)
             append_log(store, project_id, f"WARNING: cloudflare ingress error: {type(e).__name__}: {e}")
+        try:
+            create_dns_record(settings.CF_ZONE_ID, subdomain, settings.BASE_DOMAIN, settings.TUNNEL_UUID, settings.CF_API_TOKEN)
+        except CloudflareAPIError as e:
+            logger.warning("cloudflare: create_dns_record failed for %s: %s", subdomain, e)
+            append_log(store, project_id, f"WARNING: cloudflare DNS failed: {e}")
+        except Exception as e:
+            logger.warning("cloudflare: unexpected error creating DNS for %s: %s", subdomain, e)
+            append_log(store, project_id, f"WARNING: cloudflare DNS error: {type(e).__name__}: {e}")
         p = get_project(store, project_id)
         if p:
             p = p.model_copy(update={"deployed_at": datetime.now(timezone.utc)})

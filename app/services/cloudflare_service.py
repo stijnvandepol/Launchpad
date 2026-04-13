@@ -76,3 +76,82 @@ def remove_ingress(account_id: str, tunnel_id: str, api_token: str, subdomain: s
     current = _get_ingress(account_id, tunnel_id, api_token)
     named = [r for r in current if r.get("hostname") and r["hostname"] != hostname]
     _put_ingress(account_id, tunnel_id, api_token, named + [_CATCH_ALL])
+
+
+# ── DNS record management ──────────────────────────────────────────────────
+
+
+def _dns_url(zone_id: str) -> str:
+    return f"{_BASE_URL}/zones/{zone_id}/dns_records"
+
+
+def create_dns_record(zone_id: str, subdomain: str, base_domain: str, tunnel_id: str, api_token: str) -> None:
+    """Create a proxied CNAME record pointing subdomain to the tunnel."""
+    hostname = f"{subdomain}.{base_domain}"
+    target = f"{tunnel_id}.cfargotunnel.com"
+    logger.debug("cloudflare: create_dns_record %s -> %s", hostname, target)
+    # Check if record already exists
+    try:
+        r = _client.get(
+            _dns_url(zone_id),
+            headers=_headers(api_token),
+            params={"name": hostname, "type": "CNAME"},
+        )
+        r.raise_for_status()
+        records = r.json().get("result") or []
+        if records:
+            # Update existing record
+            record_id = records[0]["id"]
+            r = _client.put(
+                f"{_dns_url(zone_id)}/{record_id}",
+                headers=_headers(api_token),
+                json={"type": "CNAME", "name": hostname, "content": target, "proxied": True},
+            )
+            r.raise_for_status()
+            logger.info("cloudflare: updated DNS CNAME %s", hostname)
+            return
+    except httpx.HTTPStatusError as e:
+        raise CloudflareAPIError(f"DNS lookup HTTP {e.response.status_code}: {e.response.text}") from e
+    except httpx.RequestError as e:
+        raise CloudflareAPIError(f"DNS lookup request error: {e}") from e
+    # Create new record
+    try:
+        r = _client.post(
+            _dns_url(zone_id),
+            headers=_headers(api_token),
+            json={"type": "CNAME", "name": hostname, "content": target, "proxied": True},
+        )
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise CloudflareAPIError(f"DNS create HTTP {e.response.status_code}: {e.response.text}") from e
+    except httpx.RequestError as e:
+        raise CloudflareAPIError(f"DNS create request error: {e}") from e
+    logger.info("cloudflare: created DNS CNAME %s -> %s", hostname, target)
+
+
+def delete_dns_record(zone_id: str, subdomain: str, base_domain: str, api_token: str) -> None:
+    """Delete the CNAME record for a subdomain."""
+    hostname = f"{subdomain}.{base_domain}"
+    logger.debug("cloudflare: delete_dns_record %s", hostname)
+    try:
+        r = _client.get(
+            _dns_url(zone_id),
+            headers=_headers(api_token),
+            params={"name": hostname, "type": "CNAME"},
+        )
+        r.raise_for_status()
+        records = r.json().get("result") or []
+        if not records:
+            logger.info("cloudflare: no DNS record found for %s, nothing to delete", hostname)
+            return
+        record_id = records[0]["id"]
+        r = _client.delete(
+            f"{_dns_url(zone_id)}/{record_id}",
+            headers=_headers(api_token),
+        )
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise CloudflareAPIError(f"DNS delete HTTP {e.response.status_code}: {e.response.text}") from e
+    except httpx.RequestError as e:
+        raise CloudflareAPIError(f"DNS delete request error: {e}") from e
+    logger.info("cloudflare: deleted DNS CNAME %s", hostname)

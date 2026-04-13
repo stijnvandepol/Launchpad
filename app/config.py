@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     TUNNEL_UUID: str
     CF_ACCOUNT_ID: str
     CF_API_TOKEN: str
+    CF_ZONE_ID: str
     BASE_DOMAIN: str = "webvakwerk.nl"
     PORT: int = 3000
     GITHUB_PAT: str | None = None  # optional, for private repos
